@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Repositories Management — CodeMind AI</title>
+    <meta name="description" content="CodeMind AI UI/UX Design - Repositories Management. Complete interface extraction with full vertical scrollability." />
+    <link rel="icon" type="image/svg+xml" href="/static/assets/favicon.svg" />
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body class="full-page-mode">
+    <div class="app-shell">
+      
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark"><span></span></span>
+        <span>CodeMind <b>AI</b></span>
+        <button class="mobile-close" aria-label="Close menu"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+      </div>
+      <nav class="nav-list" aria-label="Main navigation">
+        
+        <a href="/dashboard" class="nav-item " data-view="overview">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+          <span>Overview</span>
+          
+        </a>
+        <a href="/repositories" class="nav-item active" data-view="repositories">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></svg>
+          <span>Repositories</span>
+          
+        </a>
+        <a href="/assistant" class="nav-item " data-view="assistant">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z" /><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z" /></svg>
+          <span>AI Code Assistant</span>
+          
+        </a>
+        <a href="/dependencies" class="nav-item " data-view="dependencies">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="m8.6 7.5 2.2 7M15.4 7.5l-2.2 7M9 6h6" /></svg>
+          <span>Dependency Explorer</span>
+          
+        </a>
+        <a href="/impact_analysis" class="nav-item " data-view="impact">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><path d="M12 3v4M21 12h-4M12 21v-4M3 12h4" /></svg>
+          <span>Change Impact</span>
+          
+        </a>
+        <a href="/git_history" class="nav-item " data-view="history">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2" /><circle cx="18" cy="7" r="2" /><circle cx="6" cy="19" r="2" /><path d="M6 7v10M8 7c4 0 4 6 8 6h2M18 9v8" /></svg>
+          <span>Git History</span>
+          
+        </a>
+        <a href="/security_insights" class="nav-item " data-view="security">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>
+          <span>Security Insights</span>
+          <span class="nav-count" id="sidebar-security-badge" style="display: none;"></span>
+        </a>
+        <a href="/docs" class="nav-item " data-view="docs">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14Z" /><path d="M8 7h8M8 11h6" /></svg>
+          <span>Documentation</span>
+          
+        </a>
+        <a href="/settings" class="nav-item " data-view="settings">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
+          <span>Settings</span>
+          
+        </a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-profile-section">
+          <div class="profile" id="sidebar-profile-container" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="User profile and options">
+            <span class="avatar" id="sidebar-profile-avatar">AK</span>
+            <span class="profile-info">
+              <strong id="sidebar-profile-name">Alex Kim</strong>
+              <small id="sidebar-profile-email">alex@acme.dev</small>
+            </span>
+            <button type="button" class="icon-btn profile-dropdown-trigger" id="sidebar-profile-trigger" aria-label="Toggle user profile menu" aria-haspopup="true" aria-expanded="false" title="User profile menu" tabindex="-1">
+              <svg class="icon arrow-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6" /></svg>
+            </button>
+          </div>
+
+          <div class="profile-dropdown-menu" id="sidebar-profile-menu" role="menu" aria-label="User profile options">
+            <a href="/settings" class="profile-dropdown-item" role="menuitem">
+              <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
+              <span>Settings</span>
+            </a>
+            <div class="profile-dropdown-divider"></div>
+            <button type="button" class="profile-dropdown-item logout-action sidebar-logout-btn" id="sidebar-logout-btn" role="menuitem">
+              <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+      <div class="app-main">
+        
+    <header class="topbar">
+      <button class="menu-btn" aria-label="Open menu"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></button>
+      <a href="/repositories" class="repo-selector">
+        <span class="repo-mini"><svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></svg></span>
+        <span>
+          <small>Repository</small>
+          <strong>Select repository</strong>
+        </span>
+        <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+      </a>
+      <span class="top-divider"></span>
+      <button class="branch-selector" title="Switch demo branch">
+        <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2" /><circle cx="18" cy="7" r="2" /><circle cx="6" cy="19" r="2" /><path d="M6 7v10M8 7c5 0 4-2 8-2" /></svg>
+        <span id="topbar-branch-text">main</span>
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+      </button>
+      <div class="top-spacer"></div>
+      <a href="/assistant" class="search-trigger">
+        <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+        <span>Search code, files, symbols...</span>
+        <kbd>⌘ K</kbd>
+      </a>
+      <a href="/security_insights" class="icon-btn notification" aria-label="Open security notifications">
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+        <span></span>
+      </a>
+      <a href="/settings" class="avatar-button" aria-label="Open user settings">
+        <span class="avatar avatar-small">AK</span>
+      </a>
+      <button type="button" class="icon-btn header-logout-btn" id="header-logout-btn" aria-label="Logout" title="Logout">
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      </button>
+    </header>
+        <div class="content">
+          
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <span class="eyebrow">WORKSPACE</span>
+          <h1>Repositories</h1>
+          <p>Manage repository access, analysis sources, and indexing health.</p>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-open-connect-modal">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          <span>Connect repository</span>
+        </button>
+      </div>
+
+      <div class="filter-row" id="repo-filter-row" style="display: none;">
+        <div class="graph-search">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+          <input id="repo-search-input" class="repo-search-input" placeholder="Search repositories by name, owner, branch..." value="" />
+        </div>
+        <select id="repo-status-filter" class="repo-status-select" aria-label="Filter repositories by status">
+          <option value="all">All statuses</option>
+          <option value="ready">Ready</option>
+          <option value="indexing">Indexing</option>
+          <option value="failed">Failed</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+
+      <div id="repositories-container">
+        <!-- Dynamically rendered by api.js with either rich empty state or real repositories table -->
+        <section class="card table-card" id="repo-table-card">
+          <div class="table-head">
+            <span>Repository</span>
+            <span>Language</span>
+            <span>Status</span>
+            <span>Files & Symbols</span>
+            <span style="text-align: right;">Actions</span>
+          </div>
+          <div id="repo-table-body">
+            <div style="padding: 40px; text-align: center; color: var(--muted); font-size: 12px;">
+              Loading repositories...
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Accessible 3-Step Connect GitHub Modal -->
+      <div class="modal-layer hidden" id="connect-github-modal" role="dialog" aria-modal="true" aria-labelledby="modal-step-title">
+        <div class="modal-backdrop" id="modal-backdrop-close" aria-label="Close dialog"></div>
+        <section class="setup-modal">
+          <div class="modal-head">
+            <div>
+              <span class="repo-logo"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></svg></span>
+              <div>
+                <strong id="modal-step-title">Connect GitHub Repository</strong>
+                <small>Authorize access and select a repository for AI indexing</small>
+              </div>
+            </div>
+            <button type="button" class="icon-btn modal-close-btn" id="modal-close-x-btn" aria-label="Close modal">
+              <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
+          
+          <div class="setup-steps" id="modal-steps-indicator">
+            <span class="active" id="modal-step-ind-1"><i>1</i>Authorize</span>
+            <b></b>
+            <span id="modal-step-ind-2"><i>2</i>Select</span>
+            <b></b>
+            <span id="modal-step-ind-3"><i>3</i>Index</span>
+          </div>
+
+          <div class="setup-body" id="modal-body-content">
+            <!-- Dynamically populated step content -->
+          </div>
+        </section>
+      </div>
+
+    </div>
+        </div>
+      </div>
+    </div>
+      <script src="/static/js/api.js"></script>
+  </body>
+</html>

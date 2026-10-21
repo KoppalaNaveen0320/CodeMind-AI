@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CodeMind AI — Intelligent Repository Understanding & Change-Impact Prediction</title>
+    <meta name="description" content="AI-native codebase intelligence, hybrid retrieval-augmented generation, knowledge graph dependency mapping, and pre-merge change-impact prediction." />
+    <link rel="icon" type="image/svg+xml" href="/static/assets/favicon.svg" />
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body class="landing-shell">
+    <nav class="landing-nav">
+      <a href="/landing" class="landing-brand">
+        <span class="brand-mark"><span></span></span>
+        <span>CodeMind <b>AI</b></span>
+      </a>
+      <div class="landing-nav-links">
+        <a href="/docs">Documentation</a>
+        <a href="/repositories">Repositories</a>
+        <a href="/login">Sign In</a>
+        <a href="/signup" class="btn btn-primary" style="padding: 7px 16px; font-size: 13px;">Get Started</a>
+      </div>
+    </nav>
+
+    <main>
+      <section class="landing-hero">
+        <div class="landing-badge">
+          <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z"/><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z"/></svg>
+          <span>Evidence-Based Code Intelligence</span>
+        </div>
+        <h1>Intelligent Repository Understanding & Change-Impact Prediction</h1>
+        <p>
+          CodeMind AI transforms complex codebases into interactive knowledge graphs and grounded AI assistance. Parse AST symbols, synthesize entity dependencies, and predict ripple effects before modifying production code.
+        </p>
+        <div class="landing-cta-row">
+          <a href="/signup" class="landing-btn-hero">
+            <span>Get Started Free</span>
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a href="/dashboard" class="landing-btn-secondary">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span>Open Workspace</span>
+          </a>
+        </div>
+      </section>
+
+      <section class="landing-grid-section">
+        <div class="landing-features-grid">
+          <div class="landing-feature-card">
+            <div class="landing-feature-icon">
+              <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>
+            </div>
+            <h3>AST Parsing & Code Symbol Extraction</h3>
+            <p>
+              Extract functions, classes, methods, and type signatures from repository files using Tree-sitter AST parsers with line-level source mapping.
+            </p>
+          </div>
+
+          <div class="landing-feature-card">
+            <div class="landing-feature-icon">
+              <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><path d="m8.6 7.5 2.2 7M15.4 7.5l-2.2 7M9 6h6"/></svg>
+            </div>
+            <h3>Knowledge Graph Synthesis</h3>
+            <p>
+              Automatically map callers, callees, imports, and cross-file dependencies into an interactive multi-hop graph to trace complete architecture flows.
+            </p>
+          </div>
+
+          <div class="landing-feature-card">
+            <div class="landing-feature-icon">
+              <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 3v4M21 12h-4M12 21v-4M3 12h4"/></svg>
+            </div>
+            <h3>Pre-Merge Change-Impact Analysis</h3>
+            <p>
+              Predict potential blast radius and affected downstream components from proposed modifications using verified graph relationships.
+            </p>
+          </div>
+
+          <div class="landing-feature-card">
+            <div class="landing-feature-icon">
+              <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z"/><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z"/></svg>
+            </div>
+            <h3>Hybrid RAG with Verified Citations</h3>
+            <p>
+              Pair pgvector 768-dimensional dense embeddings with keyword retrieval and local Ollama LLMs to generate grounded answers with line-number citations.
+            </p>
+          </div>
+
+          <div class="landing-feature-card">
+            <div class="landing-feature-icon">
+              <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="5" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="6" cy="19" r="2"/><path d="M6 7v10M8 7c4 0 4 6 8 6h2M18 9v8"/></svg>
+            </div>
+            <h3>Git History & Diff Intelligence</h3>
+            <p>
+              Browse live commits from GitHub, inspect per-file diffs, and query the AI assistant to separate factual changes from inferred intent.
+            </p>
+          </div>
+
+          <div class="landing-feature-card">
+            <div class="landing-feature-icon">
+              <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+            </div>
+            <h3>Static Security Insights</h3>
+            <p>
+              Scan indexed repositories for hardcoded secrets, dangerous queries, and OWASP patterns, tracking findings by severity and remediation status.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="landing-footer">
+      <div>
+        <span>CodeMind AI · Intelligent Repository Understanding System</span>
+      </div>
+      <div>
+        <span>FastAPI · PostgreSQL / pgvector · Local Ollama</span>
+      </div>
+    </footer>
+  </body>
+</html>

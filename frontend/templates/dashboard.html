@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Repository Overview — CodeMind AI</title>
+    <meta name="description" content="CodeMind AI UI/UX Design - Repository Overview. Complete interface extraction with full vertical scrollability." />
+    <link rel="icon" type="image/svg+xml" href="/static/assets/favicon.svg" />
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body class="full-page-mode">
+    <div class="app-shell">
+      
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark"><span></span></span>
+        <span>CodeMind <b>AI</b></span>
+        <button class="mobile-close" aria-label="Close menu"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+      </div>
+      <nav class="nav-list" aria-label="Main navigation">
+        
+        <a href="/dashboard" class="nav-item active" data-view="overview">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+          <span>Overview</span>
+          
+        </a>
+        <a href="/repositories" class="nav-item " data-view="repositories">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></svg>
+          <span>Repositories</span>
+          
+        </a>
+        <a href="/assistant" class="nav-item " data-view="assistant">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z" /><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z" /></svg>
+          <span>AI Code Assistant</span>
+          
+        </a>
+        <a href="/dependencies" class="nav-item " data-view="dependencies">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="m8.6 7.5 2.2 7M15.4 7.5l-2.2 7M9 6h6" /></svg>
+          <span>Dependency Explorer</span>
+          
+        </a>
+        <a href="/impact_analysis" class="nav-item " data-view="impact">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><path d="M12 3v4M21 12h-4M12 21v-4M3 12h4" /></svg>
+          <span>Change Impact</span>
+          
+        </a>
+        <a href="/git_history" class="nav-item " data-view="history">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2" /><circle cx="18" cy="7" r="2" /><circle cx="6" cy="19" r="2" /><path d="M6 7v10M8 7c4 0 4 6 8 6h2M18 9v8" /></svg>
+          <span>Git History</span>
+          
+        </a>
+        <a href="/security_insights" class="nav-item " data-view="security">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>
+          <span>Security Insights</span>
+          <span class="nav-count" id="sidebar-security-badge" style="display: none;"></span>
+        </a>
+        <a href="/docs" class="nav-item " data-view="docs">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14Z" /><path d="M8 7h8M8 11h6" /></svg>
+          <span>Documentation</span>
+          
+        </a>
+        <a href="/settings" class="nav-item " data-view="settings">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
+          <span>Settings</span>
+          
+        </a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-profile-section">
+          <div class="profile" id="sidebar-profile-container" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="User profile and options">
+            <span class="avatar" id="sidebar-profile-avatar">AK</span>
+            <span class="profile-info">
+              <strong id="sidebar-profile-name">Alex Kim</strong>
+              <small id="sidebar-profile-email">alex@acme.dev</small>
+            </span>
+            <button type="button" class="icon-btn profile-dropdown-trigger" id="sidebar-profile-trigger" aria-label="Toggle user profile menu" aria-haspopup="true" aria-expanded="false" title="User profile menu" tabindex="-1">
+              <svg class="icon arrow-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6" /></svg>
+            </button>
+          </div>
+
+          <div class="profile-dropdown-menu" id="sidebar-profile-menu" role="menu" aria-label="User profile options">
+            <a href="/settings" class="profile-dropdown-item" role="menuitem">
+              <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
+              <span>Settings</span>
+            </a>
+            <div class="profile-dropdown-divider"></div>
+            <button type="button" class="profile-dropdown-item logout-action sidebar-logout-btn" id="sidebar-logout-btn" role="menuitem">
+              <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+      <div class="app-main">
+        
+    <header class="topbar">
+      <button class="menu-btn" aria-label="Open menu"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></button>
+      <a href="/repositories" class="repo-selector">
+        <span class="repo-mini"><svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></svg></span>
+        <span>
+          <small>Repository</small>
+          <strong>Select repository</strong>
+        </span>
+        <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+      </a>
+      <span class="top-divider"></span>
+      <button class="branch-selector" title="Switch demo branch">
+        <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2" /><circle cx="18" cy="7" r="2" /><circle cx="6" cy="19" r="2" /><path d="M6 7v10M8 7c5 0 4-2 8-2" /></svg>
+        <span id="topbar-branch-text">main</span>
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+      </button>
+      <div class="top-spacer"></div>
+      <a href="/assistant" class="search-trigger">
+        <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+        <span>Search code, files, symbols...</span>
+        <kbd>⌘ K</kbd>
+      </a>
+      <a href="/security_insights" class="icon-btn notification" aria-label="Open security notifications">
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+        <span></span>
+      </a>
+      <a href="/settings" class="avatar-button" aria-label="Open user settings">
+        <span class="avatar avatar-small">AK</span>
+      </a>
+      <button type="button" class="icon-btn header-logout-btn" id="header-logout-btn" aria-label="Logout" title="Logout">
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      </button>
+    </header>
+        <div class="content">
+          
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <span class="eyebrow">REPOSITORY OVERVIEW</span>
+          <h1>Good morning, Alex</h1>
+          <p>Here’s what CodeMind understands about your active repository.</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-secondary">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+            <span>Last indexed 12m ago</span>
+          </button>
+          <a href="/assistant" class="btn btn-primary">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z" /><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z" /></svg>
+            <span>Ask CodeMind</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="repo-banner">
+        <div class="repo-logo"><svg class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></svg></div>
+        <div>
+          <div class="repo-title">
+            <strong>Select or connect a repository</strong>
+            <span class="badge badge-neutral">Workspace</span>
+          </div>
+          <p>Repository analysis and code intelligence status</p>
+        </div>
+        <div class="index-health">
+          <span class="status-dot"></span>
+          <span>
+            <strong>Checking index status</strong>
+            <small>Loading repository metrics...</small>
+          </span>
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+        </div>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-top">
+            <span class="metric-icon"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h8l4 4v16H6Z" /><path d="M14 2v5h5" /></svg></span>
+            <span class="badge badge-success">Indexed</span>
+          </div>
+          <strong class="metric-value">—</strong>
+          <span class="metric-label">Files indexed</span>
+          <small>Verified repository files</small>
+        </div>
+        <div class="metric-card">
+          <div class="metric-top">
+            <span class="metric-icon"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14" /></svg></span>
+            <span class="badge badge-success">Indexed</span>
+          </div>
+          <strong class="metric-value">—</strong>
+          <span class="metric-label">Functions & classes</span>
+          <small>AST symbols extracted</small>
+        </div>
+        <div class="metric-card">
+          <div class="metric-top">
+            <span class="metric-icon"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3M16 6h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-3M8 12h8M12 8v8" /></svg></span>
+            <span class="badge badge-success">Indexed</span>
+          </div>
+          <strong class="metric-value">—</strong>
+          <span class="metric-label">APIs detected</span>
+          <small>Detected endpoints</small>
+        </div>
+        <div class="metric-card">
+          <div class="metric-top">
+            <span class="metric-icon"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="m8.6 7.5 2.2 7M15.4 7.5l-2.2 7M9 6h6" /></svg></span>
+            <span class="badge badge-success">Indexed</span>
+          </div>
+          <strong class="metric-value">—</strong>
+          <span class="metric-label">Dependencies mapped</span>
+          <small>Knowledge graph edges</small>
+        </div>
+      </div>
+
+      <div class="dashboard-grid">
+        <section class="card architecture-card">
+          <div class="section-heading">
+            <div>
+              <h2>Architecture overview</h2>
+              <p>Detected systems and their primary relationships</p>
+            </div>
+            <a href="/dependencies" class="btn btn-ghost">
+              <span>Explore graph</span>
+              <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </a>
+          </div>
+          <div class="architecture" id="dashboard-architecture-container">
+            <div style="padding: 36px 16px; text-align: center; color: var(--muted); font-size: 11.5px; width: 100%;">
+              Synthesizing architecture overview from indexed knowledge graph...
+            </div>
+          </div>
+        </section>
+
+        <section class="card quick-card">
+          <div class="section-heading">
+            <div>
+              <h2>Quick actions</h2>
+              <p>Start with a common workflow</p>
+            </div>
+          </div>
+          <a href="/assistant" class="quick-action">
+            <span class="action-icon assistant"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z" /><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z" /></svg></span>
+            <span>
+              <strong>Ask about this codebase</strong>
+              <small>Get evidence-grounded answers</small>
+            </span>
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+          </a>
+          <a href="/dependencies" class="quick-action">
+            <span class="action-icon dependencies"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="12" cy="18" r="3" /><path d="m8.6 7.5 2.2 7M15.4 7.5l-2.2 7M9 6h6" /></svg></span>
+            <span>
+              <strong>Explore dependencies</strong>
+              <small>Trace component relationships</small>
+            </span>
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+          </a>
+          <a href="/impact_analysis" class="quick-action">
+            <span class="action-icon impact"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><path d="M12 3v4M21 12h-4M12 21v-4M3 12h4" /></svg></span>
+            <span>
+              <strong>Analyze a change</strong>
+              <small>Predict potential effects</small>
+            </span>
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+          </a>
+          <a href="/security_insights" class="quick-action">
+            <span class="action-icon security"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg></span>
+            <span>
+              <strong>Review security</strong>
+              <small id="quick-action-security-sub">Check code security findings</small>
+            </span>
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+          </a>
+        </section>
+
+        <section class="card activity-card">
+          <div class="section-heading">
+            <div>
+              <h2>Recent commits</h2>
+              <p>Latest changes on branch</p>
+            </div>
+            <a href="/git_history" class="btn btn-ghost"><span>View history</span></a>
+          </div>
+          <div id="dashboard-recent-commits">
+            <div style="padding: 24px 12px; text-align: center; color: var(--muted); font-size: 11.5px;">
+              Loading recent commits...
+            </div>
+          </div>
+        </section>
+
+        <section class="card activity-card">
+          <div class="section-heading">
+            <div>
+              <h2>Recent AI questions</h2>
+              <p>Your workspace repository investigations</p>
+            </div>
+            <a href="/assistant" class="btn btn-ghost"><span>Open assistant</span></a>
+          </div>
+          <div id="dashboard-recent-questions">
+            <div style="padding: 24px 12px; text-align: center; color: var(--muted); font-size: 11.5px;">
+              No questions asked yet for this repository.
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+        </div>
+      </div>
+    </div>
+      <script src="/static/js/api.js"></script>
+  </body>
+</html>

@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign Up — CodeMind AI</title>
+    <meta name="description" content="Create a new CodeMind AI workspace account." />
+    <link rel="icon" type="image/svg+xml" href="/static/assets/favicon.svg" />
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body class="auth-page">
+    <div class="auth-card-wrap signup-card-wrap">
+      <div class="auth-brand">
+        <span class="brand-mark"><span></span></span>
+        <span class="logo-text">CodeMind <b>AI</b></span>
+      </div>
+
+      <div class="auth-header">
+        <h1>Create your account</h1>
+        <p>Start indexing repositories and synthesizing code knowledge graphs.</p>
+      </div>
+
+      <div class="auth-error-banner" id="signup-error-banner">
+        <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span id="signup-error-text">An error occurred during registration.</span>
+      </div>
+
+      <form class="auth-form" id="signup-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="signup-name">Full name</label>
+          <input
+            type="text"
+            id="signup-name"
+            name="full_name"
+            class="form-input"
+            placeholder="Alex Kim"
+            required
+            autocomplete="name"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="signup-workspace">Workspace name</label>
+          <input
+            type="text"
+            id="signup-workspace"
+            name="workspace_name"
+            class="form-input"
+            placeholder="Acme Engineering"
+            value="Acme Engineering"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="signup-email">Work email address</label>
+          <input
+            type="email"
+            id="signup-email"
+            name="email"
+            class="form-input"
+            placeholder="alex@acme.dev"
+            required
+            autocomplete="email"
+          />
+        </div>
+
+        <div class="form-row-password-grid">
+          <!-- Left column: Password field, eye toggle, and live password requirements checklist -->
+          <div class="form-group form-col-password">
+            <label class="form-label" for="signup-password">Password</label>
+            <div class="password-input-wrap">
+              <input
+                type="password"
+                id="signup-password"
+                name="password"
+                class="form-input"
+                placeholder="••••••••••••"
+                required
+                minlength="8"
+                autocomplete="new-password"
+              />
+              <button
+                type="button"
+                class="password-toggle-btn"
+                id="signup-password-toggle"
+                aria-label="Show password"
+                title="Show password"
+              >
+                <svg class="icon eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+
+            <!-- Live Password Requirements Checklist -->
+            <div class="password-checklist" id="password-checklist" aria-live="polite">
+              <div class="checklist-item unmet" id="req-uppercase" data-req="uppercase">
+                <span class="checklist-icon">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>
+                </span>
+                <span class="checklist-text">1 uppercase letter</span>
+              </div>
+              <div class="checklist-item unmet" id="req-lowercase" data-req="lowercase">
+                <span class="checklist-icon">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>
+                </span>
+                <span class="checklist-text">1 lowercase letter</span>
+              </div>
+              <div class="checklist-item unmet" id="req-number" data-req="number">
+                <span class="checklist-icon">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>
+                </span>
+                <span class="checklist-text">1 number</span>
+              </div>
+              <div class="checklist-item unmet" id="req-special" data-req="special">
+                <span class="checklist-icon">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>
+                </span>
+                <span class="checklist-text">1 special character</span>
+              </div>
+              <div class="checklist-item unmet" id="req-length" data-req="length">
+                <span class="checklist-icon">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>
+                </span>
+                <span class="checklist-text">At least 8 characters</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right column: Confirm Password field, eye toggle, and password match/mismatch status -->
+          <div class="form-group form-col-confirm">
+            <label class="form-label" for="signup-confirm-password">Confirm password</label>
+            <div class="password-input-wrap">
+              <input
+                type="password"
+                id="signup-confirm-password"
+                name="confirm_password"
+                class="form-input"
+                placeholder="Re-enter your password"
+                required
+                autocomplete="new-password"
+              />
+              <button
+                type="button"
+                class="password-toggle-btn"
+                id="signup-confirm-toggle"
+                aria-label="Show confirm password"
+                title="Show confirm password"
+              >
+                <svg class="icon eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+
+            <!-- Dynamic Password Match Indicator -->
+            <div class="password-match-status" id="password-match-status" aria-live="polite">
+              <span class="match-icon" id="password-match-icon"></span>
+              <span class="match-text" id="password-match-text"></span>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="auth-btn-primary" id="signup-submit-btn" disabled>
+          <span>Create Workspace Account</span>
+          <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        Already have an account? <a href="/login">Sign in</a>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById('signup-form');
+      const submitBtn = document.getElementById('signup-submit-btn');
+      const errorBanner = document.getElementById('signup-error-banner');
+      const errorText = document.getElementById('signup-error-text');
+
+      const nameInput = document.getElementById('signup-name');
+      const workspaceInput = document.getElementById('signup-workspace');
+      const emailInput = document.getElementById('signup-email');
+      const passwordInput = document.getElementById('signup-password');
+      const confirmInput = document.getElementById('signup-confirm-password');
+
+      const passwordToggleBtn = document.getElementById('signup-password-toggle');
+      const confirmToggleBtn = document.getElementById('signup-confirm-toggle');
+
+      const matchStatus = document.getElementById('password-match-status');
+      const matchIcon = document.getElementById('password-match-icon');
+      const matchText = document.getElementById('password-match-text');
+
+      let isSubmitting = false;
+
+      // SVG Icon Constants
+      const EYE_SVG = '<svg class="icon eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+      const EYE_OFF_SVG = '<svg class="icon eye-off-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+
+      const CHECK_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      const NEUTRAL_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>';
+
+      const MATCH_CHECK_SVG = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      const MISMATCH_CROSS_SVG = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+
+      // Independent Password Visibility Toggles
+      function bindVisibilityToggle(inputEl, btnEl, showLabel, hideLabel) {
+        if (!inputEl || !btnEl) return;
+        btnEl.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const isPassword = inputEl.type === 'password';
+          inputEl.type = isPassword ? 'text' : 'password';
+          const newLabel = isPassword ? hideLabel : showLabel;
+          btnEl.setAttribute('aria-label', newLabel);
+          btnEl.setAttribute('title', newLabel);
+          btnEl.innerHTML = isPassword ? EYE_OFF_SVG : EYE_SVG;
+          inputEl.focus();
+        });
+      }
+
+      bindVisibilityToggle(passwordInput, passwordToggleBtn, 'Show password', 'Hide password');
+      bindVisibilityToggle(confirmInput, confirmToggleBtn, 'Show confirm password', 'Hide confirm password');
+
+      // Requirement Item State Updater
+      function setRequirementState(elementId, satisfied) {
+        const item = document.getElementById(elementId);
+        if (!item) return;
+        const icon = item.querySelector('.checklist-icon');
+        if (satisfied) {
+          item.classList.add('satisfied');
+          item.classList.remove('unmet');
+          if (icon) icon.innerHTML = CHECK_ICON_SVG;
+        } else {
+          item.classList.remove('satisfied');
+          item.classList.add('unmet');
+          if (icon) icon.innerHTML = NEUTRAL_ICON_SVG;
+        }
+      }
+
+      // Password Requirements Checklist Updater
+      function updatePasswordChecklist(password) {
+        const hasUpper = /[A-Z]/.test(password);
+        const hasLower = /[a-z]/.test(password);
+        const hasNumber = /[0-9]/.test(password);
+        const hasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password);
+        const hasLength = password.length >= 8;
+
+        setRequirementState('req-uppercase', hasUpper);
+        setRequirementState('req-lowercase', hasLower);
+        setRequirementState('req-number', hasNumber);
+        setRequirementState('req-special', hasSpecial);
+        setRequirementState('req-length', hasLength);
+
+        return hasUpper && hasLower && hasNumber && hasSpecial && hasLength;
+      }
+
+      // Confirm Password Match Status Updater
+      function updateConfirmMatchStatus(password, confirmPassword) {
+        if (!confirmPassword) {
+          matchStatus.style.display = 'none';
+          matchStatus.classList.remove('visible', 'match', 'mismatch');
+          matchText.textContent = '';
+          matchIcon.innerHTML = '';
+          return false;
+        }
+
+        matchStatus.style.display = 'flex';
+        matchStatus.classList.add('visible');
+
+        if (password === confirmPassword) {
+          matchStatus.classList.add('match');
+          matchStatus.classList.remove('mismatch');
+          matchIcon.innerHTML = MATCH_CHECK_SVG;
+          matchText.textContent = 'Passwords match';
+          return true;
+        } else {
+          matchStatus.classList.add('mismatch');
+          matchStatus.classList.remove('match');
+          matchIcon.innerHTML = MISMATCH_CROSS_SVG;
+          matchText.textContent = 'Passwords do not match';
+          return false;
+        }
+      }
+
+      // Comprehensive Form Validation & Button State Derivation
+      function validateForm() {
+        const fullName = nameInput.value.trim();
+        const workspaceName = (workspaceInput.value.trim() || 'My Workspace');
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+        const confirmPassword = confirmInput.value;
+
+        // 1. Full name validation (min 2 chars)
+        const isNameValid = fullName.length >= 2;
+
+        // 2. Workspace name validation (min 1 char)
+        const isWorkspaceValid = workspaceName.length >= 1;
+
+        // 3. Email validation (RFC compliant format)
+        const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+        // 4. Live checklist & password requirements
+        const isPasswordValid = updatePasswordChecklist(password);
+
+        // 5. Confirm password match check
+        const isConfirmNotEmpty = confirmPassword.length > 0;
+        const isMatch = updateConfirmMatchStatus(password, confirmPassword);
+
+        // Overall form validity
+        const isValid = isNameValid && isWorkspaceValid && isEmailValid && isPasswordValid && isConfirmNotEmpty && isMatch;
+
+        if (!isSubmitting) {
+          submitBtn.disabled = !isValid;
+        }
+
+        return {
+          isValid,
+          isNameValid,
+          isWorkspaceValid,
+          isEmailValid,
+          isPasswordValid,
+          isConfirmNotEmpty,
+          isMatch
+        };
+      }
+
+      // Real-time Event Listeners
+      const monitoredInputs = [nameInput, workspaceInput, emailInput, passwordInput, confirmInput];
+      monitoredInputs.forEach(input => {
+        if (!input) return;
+        input.addEventListener('input', validateForm);
+        input.addEventListener('paste', () => setTimeout(validateForm, 0));
+        input.addEventListener('keyup', validateForm);
+        input.addEventListener('change', validateForm);
+      });
+
+      // Initial validation on load
+      validateForm();
+
+      // Form Submission Handler
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorBanner.classList.remove('visible');
+
+        if (isSubmitting) return;
+
+        const validation = validateForm();
+        if (!validation.isValid) {
+          let err = 'Please satisfy all required fields before creating your account.';
+          if (!validation.isNameValid) {
+            err = 'Please enter your full name (at least 2 characters).';
+          } else if (!validation.isEmailValid) {
+            err = 'Please enter a valid work email address.';
+          } else if (!validation.isPasswordValid) {
+            err = 'Please ensure your password satisfies all 5 security requirements.';
+          } else if (!validation.isConfirmNotEmpty) {
+            err = 'Please confirm your password.';
+          } else if (!validation.isMatch) {
+            err = 'Passwords do not match.';
+          }
+          errorText.textContent = err;
+          errorBanner.classList.add('visible');
+          return;
+        }
+
+        isSubmitting = true;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>Creating account...</span>';
+
+        const fullName = nameInput.value.trim();
+        const workspaceName = workspaceInput.value.trim() || 'My Workspace';
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+
+        try {
+          const res = await fetch('/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              full_name: fullName,
+              workspace_name: workspaceName,
+              email: email,
+              password: password
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.detail || data.message || 'Registration failed');
+          }
+
+          if (data.token) {
+            localStorage.setItem('codemind_auth_token', data.token);
+          }
+          window.location.href = '/repositories';
+        } catch (err) {
+          errorText.textContent = err.message || 'Failed to create account.';
+          errorBanner.classList.add('visible');
+          isSubmitting = false;
+          validateForm();
+          submitBtn.innerHTML = '<span>Create Workspace Account</span> <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+        }
+      });
+    </script>
+  </body>
+</html>
