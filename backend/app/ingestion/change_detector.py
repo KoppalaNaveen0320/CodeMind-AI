@@ -177,6 +177,8 @@ class ChangeDetector:
             if rel_path in existing_by_path:
                 existing_file = existing_by_path[rel_path]
                 if existing_file.content_hash == snapshot.content_hash:
+                    snapshot.text_content = None
+                    snapshot.clean_bytes = None
                     change_set.unchanged.append((snapshot, existing_file))
                 else:
                     change_set.modified.append((snapshot, existing_file))

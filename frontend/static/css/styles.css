@@ -3311,3 +3311,50 @@ body.modal-open {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
+/* ==========================================================================
+   Universal Human-Readable Mathematical Formula Rendering (KaTeX)
+   ========================================================================== */
+.math-display {
+  display: block;
+  margin: 1rem 0;
+  padding: 0.875rem 1.25rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+  background: var(--surface-subtle, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 6px);
+  max-width: 100%;
+}
+
+.math-display .katex-display {
+  margin: 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
+
+.math-display .katex {
+  white-space: nowrap;
+}
+
+.math-inline {
+  display: inline-block;
+  padding: 0 2px;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.math-inline .katex {
+  white-space: nowrap;
+}
+
+.katex-fallback {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.9em;
+  color: var(--text-secondary, #475569);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

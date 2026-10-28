@@ -9,10 +9,15 @@ from backend.app.models.code_symbol import CodeSymbol
 from backend.app.models.code_chunk import CodeChunk
 from backend.app.models.knowledge_graph import GraphNode, GraphEdge
 from backend.app.models.assistant import AssistantConversation, AssistantMessage
+from backend.app.models.user_session import UserSession
+from backend.app.models.user_github_account import UserGitHubAccount
+from backend.app.models.webhook_delivery import WebhookDelivery
+from backend.app.models.security_finding_status import SecurityFindingStatus
 
 __all__ = [
     "Base",
     "User",
+    "UserGitHubAccount",
     "OAuthState",
     "Repository",
     "IndexingJob",
@@ -23,4 +28,7 @@ __all__ = [
     "GraphEdge",
     "AssistantConversation",
     "AssistantMessage",
+    "UserSession",
+    "WebhookDelivery",
+    "SecurityFindingStatus",
 ]

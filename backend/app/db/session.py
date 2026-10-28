@@ -11,15 +11,19 @@ Base = declarative_base()
 
 def create_db_engine(database_url: str) -> Engine:
     connect_args = {}
+    engine_kwargs = {"pool_pre_ping": True}
     if database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
     elif "postgres" in database_url:
-        connect_args["connect_timeout"] = 3
+        connect_args["connect_timeout"] = 5
+        engine_kwargs["pool_size"] = getattr(settings, "DATABASE_POOL_SIZE", 20)
+        engine_kwargs["max_overflow"] = getattr(settings, "DATABASE_MAX_OVERFLOW", 10)
+        engine_kwargs["pool_recycle"] = getattr(settings, "DATABASE_POOL_RECYCLE_SECONDS", 1800)
 
     return create_engine(
         database_url,
         connect_args=connect_args,
-        pool_pre_ping=True
+        **engine_kwargs
     )
 
 engine = create_db_engine(settings.DATABASE_URL)

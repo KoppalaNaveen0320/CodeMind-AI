@@ -47,7 +47,7 @@ LEGACY_REDIRECT_MAPPINGS = [
     ("/impact_analysis.html", "/impact_analysis"),
     ("/git_history.html", "/git_history"),
     ("/security_insights.html", "/security_insights"),
-    ("/docs.html", "/docs"),
+    ("/docs.html", "/documentation"),
     ("/settings.html", "/settings"),
     ("/index.html", "/index"),
 ]
@@ -158,7 +158,7 @@ def test_authenticated_pages_have_strict_no_cache_headers(client: TestClient):
         "/impact_analysis",
         "/git_history",
         "/security_insights",
-        "/docs",
+        "/documentation",
         "/settings",
         "/code_viewer",
     ]

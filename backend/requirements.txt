@@ -16,3 +16,4 @@ tree-sitter-javascript>=0.21.0
 tree-sitter-typescript>=0.21.0
 pgvector>=0.2.5
 python-multipart>=0.0.9
+cryptography>=42.0.0

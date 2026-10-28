@@ -8,15 +8,37 @@ const CodeMindAPI = {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseUrl}${endpoint}`;
+    const token = localStorage.getItem('codemind_auth_token');
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...options.headers,
+    };
+    if (token && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
       const response = await fetch(url, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          ...options.headers,
-        },
+        headers,
         ...options,
       });
+
+      if (response.status === 401) {
+        const errorBody = await response.json().catch(() => ({}));
+        const path = window.location.pathname;
+        const isAuthPage = path.includes('/login') || path.includes('/signup') || path.includes('/landing');
+        if (!isAuthPage) {
+          localStorage.removeItem('codemind_auth_token');
+          sessionStorage.clear();
+          const cleanPath = window.location.pathname + window.location.search;
+          window.location.href = `/login?expired=true&return_to=${encodeURIComponent(cleanPath)}`;
+        }
+        const error = new Error(errorBody.detail || errorBody.message || 'Session expired. Please sign in again.');
+        error.status = 401;
+        error.data = errorBody;
+        throw error;
+      }
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
@@ -66,12 +88,41 @@ const CodeMindAPI = {
     return executeSecureLogout();
   },
 
+  // Session & Security
+  async getSessions() {
+    return this.request('/api/v1/auth/sessions');
+  },
+
+  async getCurrentSession() {
+    return this.request('/api/v1/auth/sessions/current');
+  },
+
+  async revokeSession(sessionId) {
+    return this.request(`/api/v1/auth/sessions/${sessionId}`, { method: 'DELETE' });
+  },
+
+  async revokeOtherSessions() {
+    return this.request('/api/v1/auth/sessions/revoke-others', { method: 'POST' });
+  },
+
+  async updateSessionTimeout(timeoutMinutes) {
+    return this.request('/api/v1/settings/session-timeout', {
+      method: 'PUT',
+      body: JSON.stringify({ timeout_minutes: timeoutMinutes })
+    });
+  },
+
   // User Profile
   async getCurrentUser() {
+    if (window._codemind_cached_user) return window._codemind_cached_user;
     try {
-      return await this.request('/api/v1/auth/me');
+      const u = await this.request('/api/v1/auth/me');
+      window._codemind_cached_user = u;
+      return u;
     } catch (e) {
-      return await this.request('/api/v1/me');
+      const u = await this.request('/api/v1/me');
+      window._codemind_cached_user = u;
+      return u;
     }
   },
 
@@ -90,6 +141,32 @@ const CodeMindAPI = {
 
   async disconnectGitHub() {
     return this.request('/api/v1/auth/github/disconnect', { method: 'POST' });
+  },
+
+  async getGitHubAccounts() {
+    return this.request('/api/v1/auth/github/accounts');
+  },
+
+  async connectGitHubPAT(personal_access_token, label = null) {
+    return this.request('/api/v1/auth/github/pat', {
+      method: 'POST',
+      body: JSON.stringify({ personal_access_token, label })
+    });
+  },
+
+  async getGitHubAccountRepositories(accountId) {
+    return this.request(`/api/v1/auth/github/accounts/${accountId}/repositories`);
+  },
+
+  async disconnectGitHubAccount(accountId) {
+    return this.request(`/api/v1/auth/github/accounts/${accountId}`, { method: 'DELETE' });
+  },
+
+  async importRepository(repository_url_or_path, connected_account_id = null, auto_index = true) {
+    return this.request('/api/v1/repositories/import', {
+      method: 'POST',
+      body: JSON.stringify({ repository_url_or_path, connected_account_id, auto_index })
+    });
   },
 
   // Repositories API
@@ -148,6 +225,14 @@ const CodeMindAPI = {
     return this.request(`/api/v1/repositories/${repositoryId}/indexing-status`);
   },
 
+  async getSyncStatus(repositoryId) {
+    return this.request(`/api/v1/repositories/${repositoryId}/sync/status`);
+  },
+
+  async triggerSync(repositoryId) {
+    return this.request(`/api/v1/repositories/${repositoryId}/sync`, { method: 'POST' });
+  },
+
   async getJobDetails(jobId) {
     return this.request(`/api/v1/jobs/${jobId}`);
   },
@@ -162,7 +247,9 @@ const CodeMindAPI = {
 
   // Dashboard Aggregates
   async getDashboardOverview(repositoryId = null) {
-    const url = repositoryId ? `/api/v1/dashboard/overview?repository_id=${repositoryId}` : '/api/v1/dashboard/overview';
+    const clientHour = new Date().getHours();
+    let url = `/api/v1/dashboard/overview?client_hour=${clientHour}`;
+    if (repositoryId) url += `&repository_id=${repositoryId}`;
     return this.request(url);
   },
 
@@ -181,11 +268,11 @@ const CodeMindAPI = {
     });
   },
 
-  async getAssistantConversations({ repositoryId = null, search = null, limit = 50, offset = 0 } = {}) {
+  async getAssistantConversations({ repositoryId = null, search = null, limit = 50, offset = 0 } = {}, options = {}) {
     let url = `/api/v1/assistant/conversations?limit=${limit}&offset=${offset}`;
     if (repositoryId) url += `&repository_id=${repositoryId}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
-    return this.request(url);
+    return this.request(url, options);
   },
 
   async createAssistantConversation({ title = null, repositoryId = null, branch = null } = {}) {
@@ -195,8 +282,8 @@ const CodeMindAPI = {
     });
   },
 
-  async getAssistantConversation(conversationId) {
-    return this.request(`/api/v1/assistant/conversations/${conversationId}`);
+  async getAssistantConversation(conversationId, options = {}) {
+    return this.request(`/api/v1/assistant/conversations/${conversationId}`, options);
   },
 
   async updateAssistantConversation(conversationId, data) {
@@ -221,21 +308,28 @@ const CodeMindAPI = {
 
   async streamSSE(url, options = {}, callbacks = {}) {
     const isCallbackFn = typeof callbacks === 'function';
-    const onMeta = isCallbackFn ? (d) => callbacks('meta', d) : callbacks.onMeta;
-    const onStatus = isCallbackFn ? (d) => callbacks('status', d) : callbacks.onStatus;
-    const onCitation = isCallbackFn ? (d) => callbacks('citation', d) : callbacks.onCitation;
-    const onToken = isCallbackFn ? (d) => callbacks('token', d) : callbacks.onToken;
-    const onDone = isCallbackFn ? (d) => callbacks('done', d) : callbacks.onDone;
-    const onError = isCallbackFn ? (d) => callbacks('error', d) : callbacks.onError;
+    const onMeta = isCallbackFn ? null : callbacks.onMeta;
+    const onStatus = isCallbackFn ? null : callbacks.onStatus;
+    const onCitation = isCallbackFn ? null : callbacks.onCitation;
+    const onToken = isCallbackFn ? null : callbacks.onToken;
+    const onDone = isCallbackFn ? null : callbacks.onDone;
+    const onError = isCallbackFn ? null : callbacks.onError;
     const onGeneral = isCallbackFn ? callbacks : callbacks.onEvent;
+
+    const token = localStorage.getItem('codemind_auth_token');
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      ...(options.headers || {})
+    };
+    if (token && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
 
     const res = await fetch(url, {
       ...options,
-      signal: options.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {})
-      }
+      headers,
+      signal: options.signal
     });
 
     if (!res.ok) {
@@ -247,7 +341,14 @@ const CodeMindAPI = {
         errDetail = await res.text() || errDetail;
       }
       const err = new Error(errDetail);
-      if (onError) onError({ error: 'HTTP Error', detail: errDetail, status: 'failed' });
+      err.status = res.status;
+      const errorPayload = { error: 'HTTP Error', detail: errDetail, message: errDetail, status: 'failed' };
+      if (isCallbackFn) {
+        onGeneral('error', errorPayload);
+      } else {
+        if (onGeneral) onGeneral('error', errorPayload);
+        if (onError) onError(errorPayload);
+      }
       throw err;
     }
 
@@ -268,6 +369,48 @@ const CodeMindAPI = {
       options.signal.addEventListener('abort', abortHandler, { once: true });
     }
 
+    const dispatchEvent = (event, data) => {
+      if (isCallbackFn) {
+        onGeneral(event, data);
+      } else {
+        if (onGeneral) onGeneral(event, data);
+        if (event === 'meta' && onMeta) onMeta(data);
+        else if (event === 'status' && onStatus) onStatus(data);
+        else if (event === 'citation' && onCitation) onCitation(data);
+        else if (event === 'token' && onToken) onToken(data);
+        else if (event === 'done' && onDone) onDone(data);
+        else if (event === 'error' && onError) onError(data);
+        else if (onToken && data && data.token) onToken(data);
+      }
+    };
+
+    const processBufferLines = (lines) => {
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        if (line.endsWith('\r')) line = line.slice(0, -1);
+        const trimmed = line.trim();
+        if (!trimmed) {
+          currentEvent = 'message';
+          continue;
+        }
+        if (line.startsWith('event:')) {
+          currentEvent = line.substring(6).trim();
+        } else if (line.startsWith('data:')) {
+          const dataStr = line.substring(5).trim();
+          try {
+            const data = JSON.parse(dataStr);
+            dispatchEvent(currentEvent, data);
+          } catch (jsonErr) {
+            if (dataStr === '[DONE]') {
+              dispatchEvent('done', { status: 'success' });
+            } else {
+              dispatchEvent(currentEvent, { text: dataStr, raw: dataStr });
+            }
+          }
+        }
+      }
+    };
+
     try {
       reader = res.body.getReader();
       while (true) {
@@ -281,32 +424,13 @@ const CodeMindAPI = {
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop(); // keep last incomplete piece
+        processBufferLines(lines);
+      }
 
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) {
-            currentEvent = 'message';
-            continue;
-          }
-          if (line.startsWith('event:')) {
-            currentEvent = line.substring(6).trim();
-          } else if (line.startsWith('data:')) {
-            const dataStr = line.substring(5).trim();
-            try {
-              const data = JSON.parse(dataStr);
-              if (onGeneral) onGeneral(currentEvent, data);
-              if (currentEvent === 'meta' && onMeta) onMeta(data);
-              else if (currentEvent === 'status' && onStatus) onStatus(data);
-              else if (currentEvent === 'citation' && onCitation) onCitation(data);
-              else if (currentEvent === 'token' && onToken) onToken(data);
-              else if (currentEvent === 'done' && onDone) onDone(data);
-              else if (currentEvent === 'error' && onError) onError(data);
-              else if (onToken && data.token) onToken(data);
-            } catch (jsonErr) {
-              // ignore partial json
-            }
-          }
-        }
+      // Process any trailing line in buffer
+      if (buffer && buffer.trim()) {
+        processBufferLines(buffer.split('\n'));
+        buffer = '';
       }
     } catch (err) {
       if (reader) {
@@ -466,12 +590,14 @@ const CodeMindAPI = {
   },
 
   // Security Insights
-  async getSecurityFindings(repositoryId) {
-    return this.request(`/api/v1/repositories/${repositoryId}/security/findings`);
+  async getSecurityFindings(repositoryId, branch = null) {
+    const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    return this.request(`/api/v1/repositories/${repositoryId}/security/findings${query}`);
   },
 
-  async runSecurityScan(repositoryId) {
-    return this.request(`/api/v1/repositories/${repositoryId}/security/scan`, { method: 'POST' });
+  async runSecurityScan(repositoryId, branch = null) {
+    const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+    return this.request(`/api/v1/repositories/${repositoryId}/security/scan${query}`, { method: 'POST' });
   },
 
   async updateSecurityFindingStatus(repositoryId, findingId, status) {
@@ -566,7 +692,15 @@ async function updateSecuritySidebarBadge(targetRepoId = null) {
         b.removeAttribute('aria-label');
       });
       if (quickSecuritySub) {
-        quickSecuritySub.textContent = 'All security checks passed';
+        if (summary.status === 'indexing_in_progress') {
+          quickSecuritySub.textContent = 'Indexing in progress';
+        } else if (summary.status === 'no_indexed_files' || summary.total_files === 0) {
+          quickSecuritySub.textContent = 'Repository not indexed';
+        } else if (summary.status === 'unsupported_files' || summary.files_scanned === 0) {
+          quickSecuritySub.textContent = 'No supported files';
+        } else {
+          quickSecuritySub.textContent = '0 open security findings';
+        }
       }
     }
   } catch (err) {
@@ -594,6 +728,16 @@ if (document.readyState === 'loading') {
   // DOM is already parsed and interactive
   initCodeMind();
 }
+
+// Synchronize session expiration and logout across tabs
+window.addEventListener('storage', (e) => {
+  if (e.key === 'codemind_auth_logout' || (e.key === 'codemind_auth_token' && !e.newValue)) {
+    const p = window.location.pathname;
+    if (!p.includes('/login') && !p.includes('/signup') && !p.includes('/landing')) {
+      window.location.href = '/login?expired=true';
+    }
+  }
+});
 
 // Global delegated listener for reliable logout invocation across dynamic views
 document.addEventListener('click', (e) => {
@@ -634,6 +778,9 @@ async function executeSecureLogout() {
     // Only clear client auth tokens and operational storage upon confirmed server logout
     localStorage.removeItem('codemind_auth_token');
     localStorage.removeItem('codemind_active_repo_id');
+    try {
+      localStorage.setItem('codemind_auth_logout', String(Date.now()));
+    } catch (_) {}
     sessionStorage.clear();
 
     // Reliable top-level navigation to existing login route
@@ -813,7 +960,7 @@ async function hydrateCurrentPage() {
   const isCodeViewer = path.includes('code_viewer') || path.includes('code-viewer') || path === '/code' || path.startsWith('/code/');
   const isGitHistory = path.includes('git_history') || path.includes('history') || document.getElementById('view-history');
   const isSecurity = path.includes('security') || document.getElementById('view-security');
-  const isDocs = path.includes('docs') || document.getElementById('view-docs');
+  const isDocs = path.includes('documentation') || path.includes('documents') || path.includes('docs') || document.getElementById('view-docs') || document.getElementById('docs-modules-container');
   const isSettings = path.includes('settings') || document.getElementById('view-settings');
 
   let activeRepo = null;
@@ -900,7 +1047,7 @@ async function hydrateRepositoriesView() {
               </svg>
               <span>Connect GitHub</span>
             </button>
-            <a href="/docs" class="btn btn-secondary">
+            <a href="/documentation" class="btn btn-secondary">
               <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
                 <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>
@@ -984,6 +1131,395 @@ async function hydrateRepositoriesView() {
   }
 }
 
+function renderTechStackCell(repo) {
+  const ts = repo.tech_stack || {};
+  const fe = ts.frontend || [];
+  const be = ts.backend || [];
+  const db = ts.database || [];
+  const infra = ts.infrastructure || [];
+
+  const hasFe = fe.length > 0;
+  const hasBe = be.length > 0;
+  const hasDb = db.length > 0;
+  const hasInfra = infra.length > 0;
+
+  if (!hasFe && !hasBe && !hasDb && !hasInfra) {
+    const fallbackLang = repo.primary_language;
+    if (fallbackLang) {
+      return `
+        <div class="tech-stack-cell">
+          <div class="tech-stack-groups">
+            <div class="tech-group-row">
+              <span class="tech-cat-tag frontend">FE</span>
+              <div class="tech-badges-wrap">
+                <span class="tech-pill tech-frontend">${escapeHtml(fallbackLang)}</span>
+              </div>
+            </div>
+            <div class="tech-group-row">
+              <span class="tech-cat-tag backend">BE</span>
+              <div class="tech-badges-wrap">
+                <span class="tech-pill tech-none">Not detected</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    return `
+      <div class="tech-stack-cell">
+        <span class="tech-pill tech-none">Not detected</span>
+      </div>
+    `;
+  }
+
+  const maxVisiblePerGroup = 3;
+
+  function renderGroupPills(items, pillClass) {
+    if (!items || items.length === 0) {
+      return `<span class="tech-pill tech-none">Not detected</span>`;
+    }
+    const visible = items.slice(0, maxVisiblePerGroup);
+    const hiddenCount = items.length - maxVisiblePerGroup;
+    let html = visible.map(it => {
+      const ev = (it.evidence && it.evidence.length) ? it.evidence[0] : (it.evidence_file || '');
+      const title = `${escapeHtml(it.name)}${it.version ? ' ' + escapeHtml(it.version) : ''} (${escapeHtml(it.category || 'tech')}${ev ? ' · ' + escapeHtml(ev) : ''})`;
+      return `<span class="tech-pill ${pillClass}" title="${title}">${escapeHtml(it.name)}</span>`;
+    }).join('');
+
+    if (hiddenCount > 0) {
+      html += `<span class="tech-pill tech-more" onclick="openTechStackModal(${repo.id})" title="${hiddenCount} more technologies">+${hiddenCount}</span>`;
+    }
+    return html;
+  }
+
+  let html = `
+    <div class="tech-stack-cell">
+      <div class="tech-stack-groups">
+        <div class="tech-group-row">
+          <span class="tech-cat-tag frontend" title="Frontend technologies">
+            <svg class="icon" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" focusable="false"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <span>Frontend</span>
+          </span>
+          <div class="tech-badges-wrap">
+            ${renderGroupPills(fe, 'tech-frontend')}
+          </div>
+        </div>
+
+        <div class="tech-group-row">
+          <span class="tech-cat-tag backend" title="Backend technologies">
+            <svg class="icon" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" focusable="false"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            <span>Backend</span>
+          </span>
+          <div class="tech-badges-wrap">
+            ${renderGroupPills(be, 'tech-backend')}
+          </div>
+        </div>
+  `;
+
+  if (hasDb) {
+    html += `
+        <div class="tech-group-row">
+          <span class="tech-cat-tag db" title="Database & Storage">
+            <svg class="icon" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" focusable="false"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            <span>Database</span>
+          </span>
+          <div class="tech-badges-wrap">
+            ${renderGroupPills(db, 'tech-db')}
+          </div>
+        </div>
+    `;
+  }
+
+  if (hasInfra) {
+    html += `
+        <div class="tech-group-row">
+          <span class="tech-cat-tag infra" title="Infrastructure & Deployment">
+            <svg class="icon" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            <span>Infra</span>
+          </span>
+          <div class="tech-badges-wrap">
+            ${renderGroupPills(infra, 'tech-infra')}
+          </div>
+        </div>
+    `;
+  }
+
+  html += `
+      </div>
+      <button type="button" class="tech-details-btn" onclick="openTechStackModal(${repo.id})" title="View full technology stack details and evidence for ${escapeHtml(repo.name || '')}">
+        <span>Details & evidence</span>
+        <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+  `;
+
+  return html;
+}
+
+window.openTechStackModal = async function(repoId) {
+  let repo = (typeof allLoadedRepos !== 'undefined' ? allLoadedRepos : []).find(r => r.id === repoId);
+  if (!repo) {
+    try {
+      repo = await CodeMindAPI.getRepository(repoId);
+    } catch (e) {
+      repo = null;
+    }
+  }
+  if (!repo) return;
+
+  const modal = document.getElementById('tech-stack-details-modal');
+  const title = document.getElementById('tech-stack-modal-title');
+  const subtitle = document.getElementById('tech-stack-modal-subtitle');
+  const body = document.getElementById('tech-stack-modal-body');
+
+  if (title) title.textContent = `${repo.full_name || repo.name} — Technology Stack`;
+  if (subtitle) subtitle.textContent = `Evidence-based detection across ${formatNumber(repo.files_count || 0)} indexed files`;
+
+  if (body) {
+    const ts = repo.tech_stack || {};
+    const fe = ts.frontend || [];
+    const be = ts.backend || [];
+    const db = ts.database || [];
+    const infra = ts.infrastructure || [];
+    const languages = ts.languages || [];
+
+    function renderSection(title, iconSvg, items, emptyText, catClass) {
+      return `
+        <div class="tech-modal-section">
+          <div class="tech-modal-sec-head">
+            ${iconSvg}
+            <strong>${escapeHtml(title)}</strong>
+            <span class="tech-count-badge">${items.length}</span>
+          </div>
+          <div class="tech-modal-sec-items">
+            ${items.length === 0 ? `
+              <div class="tech-empty-notice">${escapeHtml(emptyText)}</div>
+            ` : items.map(it => {
+              const confPercent = typeof it.confidence === 'number'
+                ? Math.round(it.confidence * 100)
+                : (it.confidence === 'high' ? 95 : (it.confidence === 'medium' ? 80 : 65));
+              const evidenceList = Array.isArray(it.evidence) ? it.evidence : (it.evidence_file ? [it.evidence_file] : []);
+              return `
+              <div class="tech-evidence-card">
+                <div class="tech-card-top">
+                  <span class="tech-pill ${catClass}">${escapeHtml(it.name)}</span>
+                  ${it.type ? `<small style="font-size:8px; color:var(--muted); text-transform:uppercase;">${escapeHtml(it.type)}</small>` : ''}
+                  ${it.version ? `<code class="tech-version-tag">${escapeHtml(it.version)}</code>` : ''}
+                  <span class="tech-confidence-badge" title="Confidence: ${confPercent}%">
+                    ${confPercent}% verified
+                  </span>
+                </div>
+                <div class="tech-card-meta">
+                  <span class="tech-cat-label">${escapeHtml(it.category || 'technology')}</span>
+                  ${evidenceList.length > 0 ? `
+                    <span class="tech-evidence-source" title="Evidence: ${escapeHtml(evidenceList.join('; '))}">
+                      <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      <code>${escapeHtml(evidenceList[0])}</code>${evidenceList.length > 1 ? ` <span style="color:var(--muted); font-size:8px;">+${evidenceList.length - 1}</span>` : ''}
+                    </span>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    const feSvg = '<svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2" aria-hidden="true" focusable="false"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+    const beSvg = '<svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" aria-hidden="true" focusable="false"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>';
+    const dbSvg = '<svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" aria-hidden="true" focusable="false"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>';
+    const infraSvg = '<svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2" aria-hidden="true" focusable="false"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>';
+
+    let modalHtml = `
+      <div class="tech-modal-grid">
+        ${renderSection('Frontend Technologies', feSvg, fe, 'No frontend technologies detected in repository evidence.', 'tech-frontend')}
+        ${renderSection('Backend Technologies', beSvg, be, 'No backend technologies detected in repository evidence.', 'tech-backend')}
+        ${renderSection('Database & Storage', dbSvg, db, 'No database configurations or dependencies detected.', 'tech-db')}
+        ${renderSection('Infrastructure & DevOps', infraSvg, infra, 'No container or infrastructure manifests detected.', 'tech-infra')}
+      </div>
+    `;
+
+    if (languages.length > 0) {
+      modalHtml += `
+        <div class="tech-modal-languages">
+          <strong>Languages Detected:</strong>
+          <div class="tech-badges-wrap">
+            ${languages.map(l => `<span class="tech-pill tech-frontend">${escapeHtml(l)}</span>`).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    body.innerHTML = modalHtml;
+  }
+
+  if (modal) {
+    modal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+  }
+};
+
+window.closeTechStackModal = function() {
+  const modal = document.getElementById('tech-stack-details-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    document.body.classList.remove('modal-open');
+  }
+};
+
+// Global escape key listener to dismiss tech stack modal
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    window.closeTechStackModal();
+  }
+});
+
+function renderTechStackOverview(techStack, repoId = null) {
+  if (!techStack || (
+    (!techStack.frontend || techStack.frontend.length === 0) &&
+    (!techStack.backend || techStack.backend.length === 0) &&
+    (!techStack.database || techStack.database.length === 0) &&
+    (!techStack.infrastructure || techStack.infrastructure.length === 0)
+  )) {
+    return `
+      <div style="padding: 24px 16px; text-align: center; color: var(--muted); font-size: 11.5px; width: 100%;">
+        No framework manifests or dependencies detected yet. Re-index repository to scan code.
+      </div>
+    `;
+  }
+
+  const categories = [
+    { key: 'frontend', name: 'Frontend Stack', code: 'FE', badgeClass: 'badge-cat-fe', itemBadgeClass: 'badge-tech-fe', emptyText: 'No frontend frameworks or client code detected' },
+    { key: 'backend', name: 'Backend Stack', code: 'BE', badgeClass: 'badge-cat-be', itemBadgeClass: 'badge-tech-be', emptyText: 'No backend frameworks or server entry points detected' },
+    { key: 'database', name: 'Database & ORM', code: 'DB', badgeClass: 'badge-cat-db', itemBadgeClass: 'badge-tech-db', emptyText: 'No database or ORM dependencies detected' },
+    { key: 'infrastructure', name: 'DevOps & Infra', code: 'INFRA', badgeClass: 'badge-cat-infra', itemBadgeClass: 'badge-tech-infra', emptyText: 'No container or deployment manifests detected' },
+  ];
+
+  return `
+    <div class="tech-overview-grid">
+      ${categories.map(cat => {
+        const items = (techStack[cat.key] || []);
+        return `
+          <div class="tech-overview-col">
+            <div class="tech-overview-col-head">
+              <span class="badge-cat ${cat.badgeClass}">${cat.code}</span>
+              <strong>${cat.name}</strong>
+              <span class="badge ${items.length > 0 ? 'badge-primary' : 'badge-neutral'}" style="font-size: 7.5px; padding: 1px 6px;">${items.length}</span>
+            </div>
+            <div class="tech-overview-col-body">
+              ${items.length === 0 ? `
+                <div class="tech-empty-state-notice">${cat.emptyText}</div>
+              ` : items.map(item => {
+                const confRaw = item.confidence;
+                const isHigh = confRaw === 'high' || confRaw === 1 || confRaw === 1.0 || (typeof confRaw === 'number' && confRaw >= 0.8);
+                const confColor = isHigh ? '#059669' : '#d97706';
+                const confBg = isHigh ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)';
+                const confText = typeof confRaw === 'string' ? confRaw.toUpperCase() : (isHigh ? 'HIGH' : 'MEDIUM');
+                return `
+                  <div class="tech-overview-item">
+                    <div class="tech-item-row">
+                      <span class="badge-tech ${cat.itemBadgeClass}">${escapeHtml(item.name)}</span>
+                      ${item.type ? `<small style="font-size:7.5px; color:var(--muted); text-transform:uppercase;">${escapeHtml(item.type)}</small>` : ''}
+                      ${confRaw !== undefined && confRaw !== null ? `<span style="font-size:7px; margin-left:auto; padding:1px 5px; border-radius:10px; background:${confBg}; color:${confColor}; font-weight:600;">${escapeHtml(confText)}</span>` : ''}
+                    </div>
+                    ${item.evidence && item.evidence.length > 0 ? `
+                      <div class="tech-evidence-line" title="${escapeHtml(item.evidence.join('; '))}">
+                        <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        <span>Evidence: <code>${escapeHtml(item.evidence[0])}</code>${item.evidence.length > 1 ? ` <span style="color:var(--muted); font-size:7px;">+${item.evidence.length - 1}</span>` : ''}</span>
+                      </div>
+                    ` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function updateTechStackScrollButtons() {
+  const container = document.getElementById('dashboard-tech-stack-container');
+  const prevBtn = document.getElementById('tech-scroll-prev');
+  const nextBtn = document.getElementById('tech-scroll-next');
+  const controls = document.getElementById('tech-scroll-controls');
+  if (!container || !prevBtn || !nextBtn) return;
+
+  const scrollLeft = Math.ceil(container.scrollLeft);
+  const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+  const isOverflowing = maxScrollLeft > 4;
+
+  if (controls) {
+    controls.style.display = isOverflowing ? 'inline-flex' : 'none';
+  }
+
+  if (!isOverflowing) {
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    return;
+  }
+
+  prevBtn.disabled = scrollLeft <= 2;
+  nextBtn.disabled = scrollLeft >= maxScrollLeft - 2;
+}
+
+function scrollTechStack(direction) {
+  const container = document.getElementById('dashboard-tech-stack-container');
+  if (!container) return;
+
+  const col = container.querySelector('.tech-overview-col');
+  const colWidth = col ? (col.getBoundingClientRect().width + 12) : 180;
+  const scrollAmount = Math.max(colWidth, Math.round(container.clientWidth * 0.75));
+
+  container.scrollBy({
+    left: direction === 'left' ? -scrollAmount : scrollAmount,
+    behavior: 'smooth'
+  });
+}
+
+function initTechStackScrollControls() {
+  const prevBtn = document.getElementById('tech-scroll-prev');
+  const nextBtn = document.getElementById('tech-scroll-next');
+  const container = document.getElementById('dashboard-tech-stack-container');
+
+  if (prevBtn && !prevBtn._hasClickListener) {
+    prevBtn._hasClickListener = true;
+    prevBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      scrollTechStack('left');
+    });
+  }
+  if (nextBtn && !nextBtn._hasClickListener) {
+    nextBtn._hasClickListener = true;
+    nextBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      scrollTechStack('right');
+    });
+  }
+
+  if (container && !container._hasScrollListener) {
+    container._hasScrollListener = true;
+    container.addEventListener('scroll', () => {
+      updateTechStackScrollButtons();
+    }, { passive: true });
+  }
+
+  if (!window._techStackResizeBound) {
+    window._techStackResizeBound = true;
+    window.addEventListener('resize', () => {
+      updateTechStackScrollButtons();
+    }, { passive: true });
+  }
+
+  updateTechStackScrollButtons();
+}
+
+window.updateTechStackScrollButtons = updateTechStackScrollButtons;
+window.scrollTechStack = scrollTechStack;
+window.initTechStackScrollControls = initTechStackScrollControls;
+
 function renderRepositoriesTable(repos) {
   const container = document.getElementById('repositories-container') || document.querySelector('.table-card');
   if (!container) return;
@@ -991,11 +1527,11 @@ function renderRepositoriesTable(repos) {
   const headHtml = `
     <section class="card table-card" id="repo-table-card">
       <div class="table-head">
-        <span>Repository</span>
-        <span>Language</span>
-        <span>Status</span>
-        <span>Files & Symbols</span>
-        <span style="text-align: right;">Actions</span>
+        <span class="col-repo">Repository</span>
+        <span class="col-tech">Technology Stack</span>
+        <span class="col-status">Status</span>
+        <span class="col-stats">Files & Symbols</span>
+        <span class="col-actions">Actions</span>
       </div>
       <div id="repo-table-body">
   `;
@@ -1017,34 +1553,65 @@ function renderRepositoriesTable(repos) {
         ? '<span class="badge badge-danger">Failed</span>'
         : '<span class="badge badge-neutral">Pending</span>';
 
-      const langDotClass = idx % 3 === 0 ? 'lang-0' : idx % 3 === 1 ? 'lang-1' : 'lang-2';
+      let syncBadge = '';
+      if (repo.sync_status === 'syncing') {
+        syncBadge = ' <span class="badge badge-warning" title="Syncing new commits">Syncing</span>';
+      } else if (repo.sync_status === 'update_available') {
+        syncBadge = ' <span class="badge badge-info" title="New remote commits available">Update available</span>';
+      } else if (repo.sync_status === 'failed' || repo.sync_status === 'rate_limited') {
+        const isRate = repo.sync_status === 'rate_limited';
+        syncBadge = ` <button type="button" class="badge sync-badge-btn ${isRate ? 'sync-warning' : ''}" onclick="openSyncErrorModal(${repo.id})" title="${isRate ? 'GitHub rate limit active - Click for diagnosis and recovery' : 'Click to view failure diagnosis & recovery options'}" aria-label="View sync error details for ${escapeHtml(repo.name || '')}">Sync failed</button>`;
+      } else if (repo.sync_status === 'synced' || repo.last_synced_commit_sha) {
+        syncBadge = ' <span class="badge badge-neutral" title="Repository synchronized with latest commit">Synced</span>';
+      }
+
+      const displayedSha = repo.last_synced_commit_sha || repo.current_revision;
+      const shaSnippet = displayedSha ? ` · <span title="Commit SHA: ${escapeHtml(displayedSha)}">SHA: <code>${escapeHtml(displayedSha.substring(0, 7))}</code></span>` : '';
+
+      // Collect tech keywords for row dataset
+      const techKeywords = [];
+      if (repo.primary_language) techKeywords.push(repo.primary_language);
+      if (repo.tech_stack) {
+        const ts = repo.tech_stack;
+        (ts.frontend || []).forEach(t => techKeywords.push(t.name));
+        (ts.backend || []).forEach(t => techKeywords.push(t.name));
+        (ts.database || []).forEach(t => techKeywords.push(t.name));
+        (ts.infrastructure || []).forEach(t => techKeywords.push(t.name));
+        (ts.languages || []).forEach(l => techKeywords.push(l));
+      }
+
+      const techCellHtml = renderTechStackCell(repo);
 
       return `
-        <div class="table-row" data-repo-id="${repo.id}" data-repo-name="${escapeHtml((repo.name || '').toLowerCase())}" data-repo-full="${escapeHtml((repo.full_name || '').toLowerCase())}" data-repo-status="${escapeHtml((repo.status || 'pending').toLowerCase())}" data-repo-lang="${escapeHtml((repo.primary_language || '').toLowerCase())}">
-          <span>
-            <a href="/dashboard?repo=${repo.id}" class="repo-title-link" onclick="localStorage.setItem('codemind_active_repo_id', ${repo.id})" style="display:inline-flex; align-items:center; gap:9px; text-decoration:none; color:inherit;" title="Open dashboard for ${escapeHtml(repo.name || '')}">
+        <div class="table-row" data-repo-id="${repo.id}" data-repo-name="${escapeHtml((repo.name || '').toLowerCase())}" data-repo-full="${escapeHtml((repo.full_name || '').toLowerCase())}" data-repo-status="${escapeHtml((repo.status || 'pending').toLowerCase())}" data-repo-lang="${escapeHtml((repo.primary_language || '').toLowerCase())}" data-repo-tech="${escapeHtml(techKeywords.join(' ').toLowerCase())}">
+          <div class="col-repo">
+            <a href="/dashboard?repo=${repo.id}" class="repo-title-link" onclick="localStorage.setItem('codemind_active_repo_id', ${repo.id})" title="Open dashboard for ${escapeHtml(repo.name || '')}">
               <span class="repo-logo small">
                 <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
                   <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
                   <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>
                 </svg>
               </span>
-              <span>
+              <span class="repo-meta-wrap">
                 <strong>${escapeHtml(repo.full_name || repo.name)}</strong>
-                <small>${escapeHtml(repo.default_branch || 'main')} · ${repo.is_private ? 'Private' : 'Public'} · GitHub</small>
+                <small>${escapeHtml(repo.default_branch || 'main')} · ${repo.is_private ? 'Private' : 'Public'} · GitHub${shaSnippet}</small>
               </span>
             </a>
-          </span>
-          <span><i class="lang-dot ${langDotClass}"></i>${escapeHtml(repo.primary_language || 'Polyglot')}</span>
-          <span>${statusBadge}</span>
-          <span>${formatNumber(repo.files_count || 0)} files · ${formatNumber(repo.symbols_count || 0)} symbols</span>
-          <span class="repo-actions-cell">
+          </div>
+          <div class="col-tech">${techCellHtml}</div>
+          <div class="col-status">${statusBadge}${syncBadge}</div>
+          <div class="col-stats repo-stats-col">
+            <span class="repo-stat-item"><strong class="repo-stat-num">${formatNumber(repo.files_count || 0)}</strong> files</span>
+            <span class="repo-stat-dot">·</span>
+            <span class="repo-stat-item"><strong class="repo-stat-num">${formatNumber(repo.symbols_count || 0)}</strong> symbols</span>
+          </div>
+          <div class="col-actions repo-actions-cell">
             <button type="button" class="btn btn-ghost" onclick="triggerRepoIndex(${repo.id}, '${escapeHtml(repo.name || '')}')" title="Index or re-index">Index</button>
             <a href="/dashboard?repo=${repo.id}" class="btn btn-ghost" onclick="localStorage.setItem('codemind_active_repo_id', ${repo.id})" title="View Dashboard Overview">Overview</a>
             <a href="/git_history?repo=${repo.id}" class="btn btn-ghost" title="Browse commits">Browse</a>
             <a href="/code_viewer?repo=${repo.id}" class="btn btn-ghost" title="Explore code">Explore</a>
-            <button type="button" class="btn btn-ghost" onclick="deleteRepo(${repo.id}, '${escapeHtml(repo.full_name || repo.name || '')}', this)" style="color: var(--danger);" title="Disconnect repository">Disconnect</button>
-          </span>
+            <button type="button" class="btn btn-ghost btn-danger-action" onclick="deleteRepo(${repo.id}, '${escapeHtml(repo.full_name || repo.name || '')}', this)" style="color: var(--danger);" title="Disconnect repository">Disconnect</button>
+          </div>
         </div>
       `;
     }).join('');
@@ -1060,11 +1627,31 @@ function filterRepositoriesList() {
   const selectedStatus = (statusFilter ? statusFilter.value : 'all').toLowerCase();
 
   const filtered = allLoadedRepos.filter(repo => {
+    // Collect all tech names for querying
+    const techWords = [];
+    if (repo.primary_language) techWords.push(repo.primary_language.toLowerCase());
+    if (repo.tech_stack) {
+      const ts = repo.tech_stack;
+      (ts.frontend || []).forEach(t => techWords.push((t.name || '').toLowerCase()));
+      (ts.backend || []).forEach(t => techWords.push((t.name || '').toLowerCase()));
+      (ts.database || []).forEach(t => techWords.push((t.name || '').toLowerCase()));
+      (ts.infrastructure || []).forEach(t => techWords.push((t.name || '').toLowerCase()));
+      (ts.languages || []).forEach(l => techWords.push((l || '').toLowerCase()));
+      if (ts.summary) {
+        if (ts.summary.frontend_text) techWords.push(ts.summary.frontend_text.toLowerCase());
+        if (ts.summary.backend_text) techWords.push(ts.summary.backend_text.toLowerCase());
+        if (ts.summary.database_text) techWords.push(ts.summary.database_text.toLowerCase());
+        if (ts.summary.infrastructure_text) techWords.push(ts.summary.infrastructure_text.toLowerCase());
+      }
+    }
+    const techSearchText = techWords.join(' ');
+
     const nameMatch = !query ||
       (repo.name && repo.name.toLowerCase().includes(query)) ||
       (repo.full_name && repo.full_name.toLowerCase().includes(query)) ||
       (repo.default_branch && repo.default_branch.toLowerCase().includes(query)) ||
-      (repo.primary_language && repo.primary_language.toLowerCase().includes(query));
+      (repo.primary_language && repo.primary_language.toLowerCase().includes(query)) ||
+      techSearchText.includes(query);
 
     const statusMatch = selectedStatus === 'all' || (repo.status || 'pending').toLowerCase() === selectedStatus;
     return nameMatch && statusMatch;
@@ -1072,6 +1659,312 @@ function filterRepositoriesList() {
 
   renderRepositoriesTable(filtered);
 }
+
+// ============================================================================
+// Sync Error Diagnosis & Recovery Modal Handlers
+// ============================================================================
+let currentSyncModalRepoId = null;
+let currentSyncModalData = null;
+
+async function openSyncErrorModal(repoId) {
+  currentSyncModalRepoId = repoId;
+  currentSyncModalData = null;
+  const modal = document.getElementById('sync-error-details-modal');
+  const body = document.getElementById('sync-error-modal-body');
+  const statusMsg = document.getElementById('sync-error-modal-status-msg');
+  const retryBtn = document.getElementById('btn-retry-sync');
+  if (!modal || !body) return;
+
+  if (retryBtn) {
+    retryBtn.disabled = false;
+    retryBtn.innerHTML = `
+      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+      <span>Retry Sync</span>
+    `;
+  }
+  if (statusMsg) statusMsg.textContent = '';
+
+  body.innerHTML = `
+    <div style="padding: 30px; text-align: center; color: var(--muted); font-size: 13px;">
+      <div class="spinner" style="margin: 0 auto 10px auto;"></div>
+      Loading synchronization error details...
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+
+  try {
+    const data = await CodeMindAPI.getSyncStatus(repoId);
+    currentSyncModalData = data;
+    renderSyncModalContent(data);
+  } catch (err) {
+    body.innerHTML = `
+      <div class="sync-error-banner">
+        <div class="sync-error-banner-icon">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="sync-error-banner-text">
+          <strong>Failed to load diagnosis details</strong>
+          <p>${escapeHtml(err.message || 'Unknown network error')}</p>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function renderSyncModalContent(data) {
+  const body = document.getElementById('sync-error-modal-body');
+  const title = document.getElementById('sync-error-modal-title');
+  const subtitle = document.getElementById('sync-error-modal-subtitle');
+  if (!body) return;
+
+  const isRateLimit = data.sync_status === 'rate_limited';
+  const category = data.error_category || (isRateLimit ? 'RateLimit' : 'Error');
+  const code = data.error_code || (isRateLimit ? 'GITHUB_RATE_LIMITED' : 'SYNC_FAILED');
+  const operation = data.failed_operation || 'Fetch latest branch commit';
+  const branch = data.branch || data.default_branch || 'main';
+  const reason = data.error_message || data.sync_error || 'An unexpected synchronization error occurred.';
+  const suggestedAction = data.suggested_action || 'Click Retry Sync to trigger an immediate repository check.';
+
+  if (title) {
+    title.textContent = `Sync failed — ${category}`;
+  }
+  if (subtitle) {
+    subtitle.textContent = `${data.full_name || data.repository_name} · Branch: ${branch}`;
+  }
+
+  const formatTs = (ts) => {
+    if (!ts) return '<span style="color: var(--muted);">None</span>';
+    try {
+      const d = new Date(ts);
+      return d.toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short'
+      });
+    } catch {
+      return escapeHtml(ts);
+    }
+  };
+
+  const attemptTimeStr = formatTs(data.last_attempt_at || data.last_checked_at);
+  const successTimeStr = formatTs(data.last_success_at || data.last_synced_at);
+  const successSha = data.last_successful_commit_sha || data.last_synced_commit_sha;
+  const shaDisplay = successSha ? `<code>${escapeHtml(successSha.substring(0, 8))}</code>` : '<span style="color: var(--muted);">None</span>';
+
+  body.innerHTML = `
+    <div class="sync-error-banner ${isRateLimit ? 'warning' : ''}">
+      <div class="sync-error-banner-icon">
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <div class="sync-error-banner-text">
+        <strong>${escapeHtml(category)} (${escapeHtml(code)})</strong>
+        <p>${escapeHtml(reason)}</p>
+      </div>
+    </div>
+
+    <div class="sync-details-grid">
+      <div class="sync-detail-item">
+        <span class="sync-detail-label">Repository</span>
+        <span class="sync-detail-value">${escapeHtml(data.full_name || data.repository_name)}</span>
+      </div>
+      <div class="sync-detail-item">
+        <span class="sync-detail-label">Branch</span>
+        <span class="sync-detail-value"><code>${escapeHtml(branch)}</code></span>
+      </div>
+      <div class="sync-detail-item">
+        <span class="sync-detail-label">Current Sync Status</span>
+        <span class="sync-detail-value">
+          <span class="badge ${isRateLimit ? 'badge-warning' : 'badge-danger'}">
+            ${escapeHtml(data.sync_status || 'failed')}
+          </span>
+        </span>
+      </div>
+      <div class="sync-detail-item">
+        <span class="sync-detail-label">Failed Operation</span>
+        <span class="sync-detail-value">${escapeHtml(operation)}</span>
+      </div>
+      <div class="sync-detail-item">
+        <span class="sync-detail-label">Failure Timestamp</span>
+        <span class="sync-detail-value">${attemptTimeStr}</span>
+      </div>
+      <div class="sync-detail-item">
+        <span class="sync-detail-label">Last Successful Sync</span>
+        <span class="sync-detail-value">${successTimeStr}</span>
+      </div>
+      <div class="sync-detail-item">
+        <span class="sync-detail-label">Last Successful Commit</span>
+        <span class="sync-detail-value">${shaDisplay}</span>
+      </div>
+      <div class="sync-detail-item">
+        <span class="sync-detail-label">Retry Attempts</span>
+        <span class="sync-detail-value">${data.retry_count != null ? data.retry_count : 0} / 3</span>
+      </div>
+    </div>
+
+    <div class="sync-suggestion-card">
+      <div class="suggestion-icon">
+        <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <div>
+        <strong>Suggested Action</strong>
+        <p>${escapeHtml(suggestedAction)}</p>
+      </div>
+    </div>
+  `;
+}
+
+function closeSyncErrorModal() {
+  const modal = document.getElementById('sync-error-details-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    document.body.classList.remove('modal-open');
+  }
+}
+
+async function retrySyncFromModal() {
+  if (!currentSyncModalRepoId) return;
+  const retryBtn = document.getElementById('btn-retry-sync');
+  const statusMsg = document.getElementById('sync-error-modal-status-msg');
+
+  if (retryBtn) {
+    retryBtn.disabled = true;
+    retryBtn.innerHTML = `
+      <span class="spinner" style="width: 12px; height: 12px; border-width: 2px; margin-right: 6px;"></span>
+      <span>Retrying...</span>
+    `;
+  }
+  if (statusMsg) {
+    statusMsg.style.color = 'var(--text-muted, #64748b)';
+    statusMsg.textContent = 'Checking remote repository updates...';
+  }
+
+  try {
+    const updated = await CodeMindAPI.triggerSync(currentSyncModalRepoId);
+    currentSyncModalData = updated;
+
+    if (updated.sync_status === 'synced' || updated.status === 'synced') {
+      if (statusMsg) {
+        statusMsg.style.color = 'var(--success, #10b981)';
+        statusMsg.textContent = 'Synchronization successful!';
+      }
+      renderSyncModalContent(updated);
+      setTimeout(() => {
+        closeSyncErrorModal();
+        if (typeof hydrateRepositoriesView === 'function') {
+          hydrateRepositoriesView();
+        }
+      }, 1500);
+    } else if (updated.sync_status === 'syncing' || updated.status === 'syncing') {
+      if (statusMsg) {
+        statusMsg.style.color = 'var(--primary, #6366f1)';
+        statusMsg.textContent = 'New commit detected. Indexing enqueued!';
+      }
+      renderSyncModalContent(updated);
+      setTimeout(() => {
+        closeSyncErrorModal();
+        if (typeof hydrateRepositoriesView === 'function') {
+          hydrateRepositoriesView();
+        }
+      }, 1500);
+    } else {
+      // Still failed
+      if (statusMsg) {
+        statusMsg.style.color = 'var(--danger, #ef4444)';
+        statusMsg.textContent = 'Retry attempt failed. See updated reason above.';
+      }
+      renderSyncModalContent(updated);
+    }
+  } catch (err) {
+    if (statusMsg) {
+      statusMsg.style.color = 'var(--danger, #ef4444)';
+      statusMsg.textContent = `Error: ${err.message}`;
+    }
+  } finally {
+    if (retryBtn) {
+      retryBtn.disabled = false;
+      retryBtn.innerHTML = `
+        <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+        <span>Retry Sync</span>
+      `;
+    }
+  }
+}
+
+function copySyncErrorDetails() {
+  const statusMsg = document.getElementById('sync-error-modal-status-msg');
+  if (!currentSyncModalData) {
+    if (statusMsg) statusMsg.textContent = 'No error details to copy.';
+    return;
+  }
+
+  const payload = {
+    repository: currentSyncModalData.full_name || currentSyncModalData.repository_name,
+    branch: currentSyncModalData.branch || currentSyncModalData.default_branch || 'main',
+    sync_status: currentSyncModalData.sync_status,
+    error_code: currentSyncModalData.error_code,
+    error_category: currentSyncModalData.error_category,
+    failed_operation: currentSyncModalData.failed_operation,
+    error_message: currentSyncModalData.error_message || currentSyncModalData.sync_error,
+    suggested_action: currentSyncModalData.suggested_action,
+    last_attempt_at: currentSyncModalData.last_attempt_at || currentSyncModalData.last_checked_at,
+    last_successful_sync_at: currentSyncModalData.last_success_at || currentSyncModalData.last_synced_at,
+    last_successful_commit_sha: currentSyncModalData.last_successful_commit_sha || currentSyncModalData.last_synced_commit_sha,
+    retry_count: currentSyncModalData.retry_count
+  };
+
+  const text = JSON.stringify(payload, null, 2);
+  const showCopied = () => {
+    if (statusMsg) {
+      statusMsg.style.color = 'var(--primary, #6366f1)';
+      statusMsg.textContent = 'Error details copied to clipboard!';
+      setTimeout(() => {
+        if (statusMsg && statusMsg.textContent === 'Error details copied to clipboard!') {
+          statusMsg.textContent = '';
+        }
+      }, 3000);
+    }
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(showCopied).catch(() => fallbackCopy(text, showCopied));
+  } else {
+    fallbackCopy(text, showCopied);
+  }
+}
+
+function fallbackCopy(text, callback) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    callback();
+  } catch (e) {
+    const statusMsg = document.getElementById('sync-error-modal-status-msg');
+    if (statusMsg) statusMsg.textContent = 'Failed to copy to clipboard.';
+  } finally {
+    if (ta.parentNode) {
+      ta.parentNode.removeChild(ta);
+    }
+  }
+}
+
+window.openSyncErrorModal = openSyncErrorModal;
+window.closeSyncErrorModal = closeSyncErrorModal;
+window.retrySyncFromModal = retrySyncFromModal;
+window.copySyncErrorDetails = copySyncErrorDetails;
 
 // Global open/close modal triggers
 window.openConnectModal = function() {
@@ -1212,79 +2105,168 @@ async function renderModalStep1() {
   body.innerHTML = `
     <div style="padding: 30px; text-align: center; color: var(--muted);">
       <svg class="icon animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-      <p style="margin-top: 8px; font-size: 11px;">Checking connection status...</p>
+      <p style="margin-top: 8px; font-size: 11px;">Checking GitHub connection status...</p>
     </div>
   `;
 
   try {
     cachedAuthStatus = await CodeMindAPI.getGitHubAuthStatus();
   } catch (e) {
-    cachedAuthStatus = { configured: false, connected: false };
+    cachedAuthStatus = { configured: false, connected: false, accounts: [] };
   }
 
-  let oauthSectionHtml = '';
-  if (cachedAuthStatus && cachedAuthStatus.connected) {
-    oauthSectionHtml = `
-      <div class="auth-card" style="margin-top: 14px;">
-        <div class="auth-status-row">
-          <div>
-            <span class="badge badge-success" style="margin-bottom: 4px;">Connected</span>
-            <div style="font-size: 12px; font-weight: 600; color: var(--text);">GitHub Account: @${escapeHtml(cachedAuthStatus.username || 'user')}</div>
-          </div>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-disconnect-gh" style="color: var(--danger);">Disconnect</button>
+  const accounts = (cachedAuthStatus && cachedAuthStatus.accounts) || [];
+
+  // 1. Connected Accounts Overview
+  let connectedAccountsHtml = '';
+  if (accounts.length > 0) {
+    connectedAccountsHtml = `
+      <div style="margin-bottom: 16px; padding: 12px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <strong style="font-size: 11.5px; color: var(--text);">Connected GitHub Accounts (${accounts.length})</strong>
+          <span style="font-size: 10px; color: var(--muted);">Encrypted with AES-256-GCM</span>
         </div>
-      </div>
-      <button type="button" class="btn btn-secondary full-btn" id="btn-proceed-select" style="margin-top: 8px;">
-        <span>Browse Authorized Private/Org Repositories →</span>
-      </button>
-    `;
-  } else if (cachedAuthStatus && cachedAuthStatus.configured) {
-    oauthSectionHtml = `
-      <div style="margin-top: 16px; padding: 12px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius);">
-        <strong style="font-size: 11.5px; display: block; margin-bottom: 4px;">Private & Organization Repositories</strong>
-        <p style="font-size: 11px; color: var(--muted); margin: 0 0 10px;">Authorize CodeMind to access your private repositories with secure server-side token storage.</p>
-        <button type="button" class="btn btn-secondary full-btn" id="btn-start-oauth">
-          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-            <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/>
-            <path d="M9 18c-4.51 2-5-2-7-2"/>
-          </svg>
-          <span>Authorize GitHub OAuth</span>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;">
+          ${accounts.map(acc => `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge ${acc.auth_method === 'pat' ? 'badge-primary' : 'badge-success'}" style="font-size: 9.5px;">${escapeHtml(acc.auth_method.toUpperCase())}</span>
+                <strong style="font-size: 11.5px; color: var(--text);">@${escapeHtml(acc.github_username)}</strong>
+                ${acc.label ? `<small style="color: var(--muted); font-size: 10px;">(${escapeHtml(acc.label)})</small>` : ''}
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm btn-disconnect-single-account" data-account-id="${acc.id}" style="color: var(--danger); font-size: 10px; padding: 2px 8px;">
+                Disconnect
+              </button>
+            </div>
+          `).join('')}
+        </div>
+        <button type="button" class="btn btn-primary full-btn" id="btn-proceed-select" style="margin-top: 4px;">
+          <span>Browse Authorized Repositories (${accounts.length} account${accounts.length > 1 ? 's' : ''}) →</span>
         </button>
       </div>
     `;
-  } else {
-    oauthSectionHtml = `
-      <div style="margin-top: 16px; padding: 10px 12px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius); font-size: 11px; color: var(--muted);">
-        <div style="display: flex; gap: 8px; align-items: flex-start;">
-          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color: var(--muted); flex-shrink: 0; margin-top: 1px;" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <div>
-            <strong style="color: var(--text); font-size: 11px;">GitHub OAuth Unconfigured</strong>
-            <p style="margin: 2px 0 0; color: var(--muted); font-size: 10.5px;">To enable private repository OAuth, set <code>GITHUB_CLIENT_ID</code> and <code>GITHUB_CLIENT_SECRET</code> in <code>backend/.env</code>. Public repositories and folder uploads work directly without credentials.</p>
-          </div>
-        </div>
-      </div>
-    `;
+  }
+
+  // Account selector dropdown for direct import form
+  let accountSelectorOptions = `<option value="">Auto-detect / Public (No credentials)</option>`;
+  if (accounts.length > 0) {
+    accounts.forEach(acc => {
+      accountSelectorOptions += `<option value="${acc.id}">Use @${escapeHtml(acc.github_username)} (${acc.auth_method.toUpperCase()})</option>`;
+    });
   }
 
   body.innerHTML = `
-    <!-- Method A: Public GitHub Repository -->
+    <!-- Connected Accounts Header if any -->
+    ${connectedAccountsHtml}
+
+    <!-- Method A: Connect by URL or Path -->
     <div>
-      <h2 style="font-size: 13.5px; font-weight: 600; margin-bottom: 4px;">Connect a Public GitHub Repository</h2>
+      <h2 style="font-size: 13.5px; font-weight: 600; margin-bottom: 4px;">Import Repository by URL or Path</h2>
       <p style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
-        Accepts repository paths (e.g. <code>pallets/flask</code>) or full URLs (e.g. <code>https://github.com/fastapi/fastapi</code>).
+        Accepts public or private GitHub URLs (e.g. <code>https://github.com/owner/repo</code>) or paths (e.g. <code>owner/repo</code>).
       </p>
 
       <div id="public-repo-error" class="inline-error" style="display: none; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; padding: 8px 12px; border-radius: 6px; font-size: 11px; margin-bottom: 10px;"></div>
 
       <form id="form-direct-repo" class="direct-connect-form" style="display: flex; flex-direction: column; gap: 8px;">
         <div>
-          <label for="input-direct-repo" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 5px; color: var(--text);">Repository URL or Path</label>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="input-direct-repo" placeholder="owner/repo or https://github.com/owner/repo" required style="flex: 1;" autocomplete="off" spellcheck="false" />
-            <button type="submit" class="btn btn-primary" id="btn-direct-submit" style="white-space: nowrap;">Connect & Index</button>
-          </div>
+          <label for="input-direct-repo" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 4px; color: var(--text);">Repository URL or Path</label>
+          <input type="text" id="input-direct-repo" placeholder="owner/repo or https://github.com/owner/repo" required style="width: 100%; margin-bottom: 6px;" autocomplete="off" spellcheck="false" />
         </div>
+        ${accounts.length > 0 ? `
+          <div>
+            <label for="select-direct-repo-account" style="display: block; font-size: 10.5px; font-weight: 500; margin-bottom: 3px; color: var(--muted);">Authorized Account (required for private repositories)</label>
+            <select id="select-direct-repo-account" style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; background: var(--surface); color: var(--text);">
+              ${accountSelectorOptions}
+            </select>
+          </div>
+        ` : ''}
+        <button type="submit" class="btn btn-primary" id="btn-direct-submit" style="align-self: flex-start; margin-top: 2px;">Connect & Index</button>
       </form>
+    </div>
+
+    <!-- Method B: Authorize GitHub (OAuth and PAT Guide) -->
+    <div style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);">
+      <h2 style="font-size: 13.5px; font-weight: 600; margin-bottom: 4px;">Authorize GitHub Account</h2>
+      <p style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
+        Connect one or multiple personal or organization accounts using OAuth or Fine-grained Personal Access Tokens.
+      </p>
+
+      <!-- Tab Buttons: OAuth vs PAT -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-tab-oauth" style="font-weight: 600;">
+          GitHub OAuth
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-tab-pat">
+          Connect with Token (PAT)
+        </button>
+      </div>
+
+      <!-- OAuth Section -->
+      <div id="section-oauth-flow">
+        ${cachedAuthStatus && cachedAuthStatus.configured ? `
+          <div style="padding: 10px 12px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius);">
+            <p style="font-size: 11px; color: var(--muted); margin: 0 0 10px;">Authorize access to your personal and organization repositories via GitHub OAuth.</p>
+            <button type="button" class="btn btn-secondary full-btn" id="btn-start-oauth">
+              <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/>
+                <path d="M9 18c-4.51 2-5-2-7-2"/>
+              </svg>
+              <span>Authorize with GitHub OAuth</span>
+            </button>
+          </div>
+        ` : `
+          <div style="padding: 10px 12px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius); font-size: 11px; color: var(--muted);">
+            <strong style="color: var(--text); font-size: 11px;">GitHub OAuth App Unconfigured</strong>
+            <p style="margin: 2px 0 0; color: var(--muted); font-size: 10.5px;">To enable OAuth, set <code>GITHUB_CLIENT_ID</code> and <code>GITHUB_CLIENT_SECRET</code> in <code>backend/.env</code>. Alternatively, use Personal Access Token below.</p>
+          </div>
+        `}
+      </div>
+
+      <!-- PAT Setup Guide Section (Hidden by default, shown on click) -->
+      <div id="section-pat-flow" style="display: none; padding: 12px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius);">
+        <strong style="font-size: 12px; color: var(--text); display: block; margin-bottom: 6px;">How to generate and connect a Personal Access Token</strong>
+        
+        <ol style="font-size: 11px; line-height: 1.55; color: var(--muted); margin: 0 0 12px 18px; padding: 0;">
+          <li>
+            Open GitHub token settings: 
+            <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener noreferrer" style="color: var(--primary); text-decoration: underline; font-weight: 600;">
+              https://github.com/settings/personal-access-tokens ↗
+            </a>
+          </li>
+          <li>Select <strong>Fine-grained tokens</strong> and click <strong>"Generate new token"</strong>.</li>
+          <li>Enter a descriptive token name and select an appropriate expiration.</li>
+          <li>Choose the intended resource owner: your personal account or an organization that permits this authorization.</li>
+          <li>Select only the repositories that CodeMind AI needs to access.</li>
+          <li>Grant minimum permissions: Use read-only repository permissions (<strong>Contents: Read-only</strong>, <strong>Metadata: Read-only</strong>).</li>
+          <li>Generate the token and copy it immediately. (GitHub will not display the full token again).</li>
+          <li>Return to CodeMind AI, paste the token into the secure input below, and click <strong>"Connect GitHub"</strong>.</li>
+        </ol>
+
+        <div id="pat-inline-error" class="inline-error" style="display: none; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; padding: 8px 12px; border-radius: 6px; font-size: 11px; margin-bottom: 10px;"></div>
+        <div id="pat-inline-success" class="inline-success" style="display: none; color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 8px 12px; border-radius: 6px; font-size: 11px; margin-bottom: 10px;"></div>
+
+        <form id="form-connect-pat" style="display: flex; flex-direction: column; gap: 8px;">
+          <div>
+            <label for="input-pat-token" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 4px; color: var(--text);">Personal Access Token</label>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <input type="password" id="input-pat-token" placeholder="ghp_... or github_pat_..." required style="flex: 1;" autocomplete="off" spellcheck="false" />
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-pat-visibility" style="padding: 6px 10px; font-size: 10.5px;">Show</button>
+            </div>
+          </div>
+          <div>
+            <label for="input-pat-label" style="display: block; font-size: 10.5px; font-weight: 500; margin-bottom: 2px; color: var(--muted);">Token Label (Optional)</label>
+            <input type="text" id="input-pat-label" placeholder="e.g. Work Projects, Personal PAT" style="width: 100%;" autocomplete="off" />
+          </div>
+          <div style="font-size: 10px; color: var(--muted); margin: 2px 0;">
+            🔒 Tokens are encrypted on the server with AES-256-GCM. Tokens are never exposed to frontend code or shared.
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <button type="submit" class="btn btn-primary" id="btn-pat-submit">Connect GitHub</button>
+            <button type="button" class="btn btn-secondary" id="btn-pat-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <!-- Method C: Upload Local Project Folder -->
@@ -1308,12 +2290,125 @@ async function renderModalStep1() {
         <button type="submit" class="btn btn-secondary" id="btn-folder-submit" style="align-self: flex-start; min-width: 140px; margin-top: 2px;">Upload & Index</button>
       </form>
     </div>
-
-    <!-- Method B: GitHub OAuth -->
-    <div style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);">
-      ${oauthSectionHtml}
-    </div>
   `;
+
+  // Handlers for Tab Switching
+  const tabOAuth = document.getElementById('btn-tab-oauth');
+  const tabPAT = document.getElementById('btn-tab-pat');
+  const sectionOAuth = document.getElementById('section-oauth-flow');
+  const sectionPAT = document.getElementById('section-pat-flow');
+
+  if (tabOAuth && tabPAT && sectionOAuth && sectionPAT) {
+    tabOAuth.addEventListener('click', () => {
+      tabOAuth.style.fontWeight = '600';
+      tabPAT.style.fontWeight = 'normal';
+      sectionOAuth.style.display = 'block';
+      sectionPAT.style.display = 'none';
+    });
+
+    tabPAT.addEventListener('click', () => {
+      tabPAT.style.fontWeight = '600';
+      tabOAuth.style.fontWeight = 'normal';
+      sectionOAuth.style.display = 'none';
+      sectionPAT.style.display = 'block';
+    });
+  }
+
+  // PAT Visibility Toggle
+  const toggleBtn = document.getElementById('btn-toggle-pat-visibility');
+  const patInput = document.getElementById('input-pat-token');
+  if (toggleBtn && patInput) {
+    toggleBtn.addEventListener('click', () => {
+      if (patInput.type === 'password') {
+        patInput.type = 'text';
+        toggleBtn.textContent = 'Hide';
+      } else {
+        patInput.type = 'password';
+        toggleBtn.textContent = 'Show';
+      }
+    });
+  }
+
+  // PAT Form Cancel
+  const cancelPatBtn = document.getElementById('btn-pat-cancel');
+  if (cancelPatBtn) {
+    cancelPatBtn.addEventListener('click', () => {
+      if (sectionPAT && sectionOAuth) {
+        sectionPAT.style.display = 'none';
+        sectionOAuth.style.display = 'block';
+        if (tabOAuth) tabOAuth.style.fontWeight = '600';
+        if (tabPAT) tabPAT.style.fontWeight = 'normal';
+      }
+    });
+  }
+
+  // PAT Form Submission
+  const patForm = document.getElementById('form-connect-pat');
+  if (patForm) {
+    patForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const tokenVal = (patInput ? patInput.value : '').trim();
+      const labelInput = document.getElementById('input-pat-label');
+      const labelVal = labelInput ? labelInput.value.trim() : null;
+      const submitBtn = document.getElementById('btn-pat-submit');
+      const errBox = document.getElementById('pat-inline-error');
+      const succBox = document.getElementById('pat-inline-success');
+
+      if (errBox) errBox.style.display = 'none';
+      if (succBox) succBox.style.display = 'none';
+
+      if (!tokenVal) {
+        if (errBox) {
+          errBox.textContent = 'Please paste a valid Personal Access Token.';
+          errBox.style.display = 'block';
+        }
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<svg class="icon animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> Validating token...`;
+
+      try {
+        const connectedAcc = await CodeMindAPI.connectGitHubPAT(tokenVal, labelVal);
+        // Clear sensitive input immediately after successful transmission
+        if (patInput) patInput.value = '';
+        if (labelInput) labelInput.value = '';
+
+        if (succBox) {
+          succBox.textContent = `✓ Successfully connected @${connectedAcc.github_username}! Redirecting to repository selection...`;
+          succBox.style.display = 'block';
+        }
+
+        setTimeout(() => {
+          renderModalStep2(connectedAcc.id);
+        }, 800);
+      } catch (err) {
+        if (errBox) {
+          errBox.textContent = err.message || 'Token validation failed. Please check permissions and expiration.';
+          errBox.style.display = 'block';
+        } else {
+          alert(`Validation failed: ${err.message}`);
+        }
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Connect GitHub';
+      }
+    });
+  }
+
+  // Single Account Disconnect Handlers
+  const disconnectBtns = body.querySelectorAll('.btn-disconnect-single-account');
+  disconnectBtns.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const accId = btn.getAttribute('data-account-id');
+      if (!confirm('Disconnect this GitHub account? Indexed repositories in CodeMind AI will be preserved safely.')) return;
+      try {
+        await CodeMindAPI.disconnectGitHubAccount(accId);
+        renderModalStep1();
+      } catch (err) {
+        alert(`Failed to disconnect account: ${err.message}`);
+      }
+    });
+  });
 
   const startOAuthBtn = document.getElementById('btn-start-oauth');
   if (startOAuthBtn) {
@@ -1331,44 +2426,22 @@ async function renderModalStep1() {
     });
   }
 
-  const disconnectGhBtn = document.getElementById('btn-disconnect-gh');
-  if (disconnectGhBtn) {
-    disconnectGhBtn.addEventListener('click', async () => {
-      if (!confirm('Disconnect your GitHub account? Any existing indexed repositories in CodeMind will remain safe.')) return;
-      try {
-        await CodeMindAPI.disconnectGitHub();
-        renderModalStep1();
-      } catch (err) {
-        alert(`Failed to disconnect: ${err.message}`);
-      }
-    });
-  }
-
   const directForm = document.getElementById('form-direct-repo');
   if (directForm) {
     directForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const input = document.getElementById('input-direct-repo');
+      const accountSelect = document.getElementById('select-direct-repo-account');
       const submitBtn = document.getElementById('btn-direct-submit');
       const errBox = document.getElementById('public-repo-error');
       if (errBox) errBox.style.display = 'none';
 
       const fullRepo = (input ? input.value : '').trim();
+      const selectedAccId = accountSelect && accountSelect.value ? parseInt(accountSelect.value) : null;
+
       if (!fullRepo) {
         if (errBox) {
           errBox.textContent = 'Please enter a repository path (e.g. pallets/flask) or full GitHub URL.';
-          errBox.style.display = 'block';
-        }
-        if (input) input.focus();
-        return;
-      }
-
-      // Check format
-      const isUrl = fullRepo.startsWith('http://') || fullRepo.startsWith('https://');
-      const isPath = fullRepo.includes('/') && !fullRepo.includes(' ') && fullRepo.split('/').filter(Boolean).length >= 2;
-      if (!isUrl && !isPath) {
-        if (errBox) {
-          errBox.textContent = 'Invalid format. Please enter "owner/repo" or a full GitHub URL (e.g. "pallets/flask").';
           errBox.style.display = 'block';
         }
         if (input) input.focus();
@@ -1379,7 +2452,7 @@ async function renderModalStep1() {
       submitBtn.innerHTML = `<svg class="icon animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> Connecting...`;
 
       try {
-        const repo = await CodeMindAPI.connectPublicRepository(fullRepo, true);
+        const repo = await CodeMindAPI.importRepository(fullRepo, selectedAccId, true);
         renderModalStep3(repo);
       } catch (err) {
         if (errBox) {
@@ -1469,7 +2542,7 @@ async function renderModalStep1() {
   }
 }
 
-async function renderModalStep2() {
+async function renderModalStep2(initialAccountId = null) {
   updateModalStepIndicators(2);
   const body = document.getElementById('modal-body-content');
   if (!body) return;
@@ -1482,70 +2555,142 @@ async function renderModalStep2() {
   `;
 
   try {
-    const ghRepos = await CodeMindAPI.getGitHubRepositories();
+    let accounts = [];
+    try {
+      const accRes = await CodeMindAPI.getGitHubAccounts();
+      accounts = accRes.accounts || [];
+    } catch (e) {
+      accounts = [];
+    }
 
-    if (!ghRepos || ghRepos.length === 0) {
-      body.innerHTML = `
-        <div class="empty-state" style="padding: 24px; text-align: center;">
-          <h3>No Repositories Found</h3>
-          <p style="color: var(--muted); font-size: 11px; margin: 8px 0 16px;">We could not find any accessible repositories on your GitHub account.</p>
-          <button type="button" class="btn btn-secondary" onclick="renderModalStep1()">Back to Step 1</button>
+    let activeAccountId = initialAccountId;
+    if (!activeAccountId && accounts.length > 0) {
+      activeAccountId = accounts[0].id;
+    }
+
+    const fetchRepos = async (accId) => {
+      if (accId) {
+        return CodeMindAPI.getGitHubAccountRepositories(accId);
+      }
+      return CodeMindAPI.getGitHubRepositories();
+    };
+
+    let ghRepos = await fetchRepos(activeAccountId);
+
+    const renderRepoList = (repos) => {
+      if (!repos || repos.length === 0) {
+        return `
+          <div class="empty-state" style="padding: 24px; text-align: center;">
+            <h3 style="font-size: 12px; margin-bottom: 4px;">No Repositories Accessible</h3>
+            <p style="color: var(--muted); font-size: 10.5px; margin: 4px 0 12px;">This account has not granted access to any repositories. Check fine-grained permissions or repository selection in GitHub settings.</p>
+          </div>
+        `;
+      }
+
+      return repos.map((repo, idx) => `
+        <div class="repo-option ${idx === 0 ? 'selected' : ''}" data-full-name="${escapeHtml(repo.full_name)}" data-name="${escapeHtml(repo.name)}" data-branch="${escapeHtml(repo.default_branch || 'main')}" data-private="${repo.is_private}" data-lang="${escapeHtml(repo.primary_language || '')}" data-id="${repo.id}" data-acc-id="${repo.connected_account_id || activeAccountId || ''}">
+          <span class="radio-dot"></span>
+          <span class="repo-logo small"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span>
+          <span>
+            <strong>${escapeHtml(repo.full_name)}</strong>
+            <small>${escapeHtml(repo.default_branch || 'main')} · ${repo.is_private ? 'Private' : 'Public'} · ${escapeHtml(repo.primary_language || 'Polyglot')}</small>
+          </span>
+          ${repo.is_connected ? '<span class="badge badge-neutral">Already Connected</span>' : ''}
+        </div>
+      `).join('');
+    };
+
+    let accountSwitcherHtml = '';
+    if (accounts.length > 1) {
+      accountSwitcherHtml = `
+        <div style="margin-bottom: 12px;">
+          <label for="modal-account-switcher" style="display: block; font-size: 10.5px; font-weight: 600; color: var(--muted); margin-bottom: 4px;">Viewing account repositories:</label>
+          <select id="modal-account-switcher" style="width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; background: var(--surface); color: var(--text);">
+            ${accounts.map(a => `<option value="${a.id}" ${a.id === activeAccountId ? 'selected' : ''}>@${escapeHtml(a.github_username)} (${a.auth_method.toUpperCase()}${a.label ? ` - ${escapeHtml(a.label)}` : ''})</option>`).join('')}
+          </select>
         </div>
       `;
-      return;
     }
 
     body.innerHTML = `
       <h2>Select a repository</h2>
-      <p>Choose an accessible repository to register and index with CodeMind AI.</p>
+      <p>Choose an authorized repository to register and index with CodeMind AI.</p>
       
-      <div class="modal-search">
+      ${accountSwitcherHtml}
+
+      <div class="modal-search" style="margin-bottom: 10px;">
         <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-        <input type="text" id="modal-repo-search-input" placeholder="Search your repositories..." />
+        <input type="text" id="modal-repo-search-input" placeholder="Filter repositories..." />
       </div>
 
-      <div id="modal-repo-options-list" style="max-height: 280px; overflow-y: auto; margin-bottom: 16px;">
-        ${ghRepos.map((repo, idx) => `
-          <div class="repo-option ${idx === 0 ? 'selected' : ''}" data-full-name="${escapeHtml(repo.full_name)}" data-name="${escapeHtml(repo.name)}" data-branch="${escapeHtml(repo.default_branch || 'main')}" data-private="${repo.is_private}" data-lang="${escapeHtml(repo.primary_language || '')}" data-id="${repo.id}">
-            <span class="radio-dot"></span>
-            <span class="repo-logo small"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span>
-            <span>
-              <strong>${escapeHtml(repo.full_name)}</strong>
-              <small>${escapeHtml(repo.default_branch || 'main')} · ${repo.is_private ? 'Private' : 'Public'} · ${escapeHtml(repo.primary_language || 'Polyglot')}</small>
-            </span>
-            ${repo.is_connected ? '<span class="badge badge-neutral">Already Connected</span>' : ''}
-          </div>
-        `).join('')}
+      <div id="modal-repo-options-list" style="max-height: 260px; overflow-y: auto; margin-bottom: 16px;">
+        ${renderRepoList(ghRepos)}
       </div>
 
       <div class="modal-actions" style="justify-content: space-between;">
         <button type="button" class="btn btn-secondary" onclick="renderModalStep1()">Back</button>
-        <button type="button" class="btn btn-primary" id="btn-modal-confirm-select">Continue to Indexing →</button>
+        <button type="button" class="btn btn-primary" id="btn-modal-confirm-select" ${!ghRepos || ghRepos.length === 0 ? 'disabled' : ''}>Continue to Indexing →</button>
       </div>
     `;
 
-    selectedGitHubRepo = ghRepos[0];
-    const options = body.querySelectorAll('.repo-option');
-    options.forEach(opt => {
-      opt.addEventListener('click', () => {
-        options.forEach(o => o.classList.remove('selected'));
-        opt.classList.add('selected');
-        const fullName = opt.getAttribute('data-full-name');
-        selectedGitHubRepo = ghRepos.find(r => r.full_name === fullName) || {
-          name: opt.getAttribute('data-name'),
-          full_name: fullName,
-          default_branch: opt.getAttribute('data-branch'),
-          is_private: opt.getAttribute('data-private') === 'true',
-          primary_language: opt.getAttribute('data-lang'),
-          id: parseInt(opt.getAttribute('data-id'))
-        };
+    selectedGitHubRepo = ghRepos && ghRepos.length > 0 ? { ...ghRepos[0], connected_account_id: activeAccountId } : null;
+
+    const bindRepoOptions = () => {
+      const options = body.querySelectorAll('.repo-option');
+      options.forEach(opt => {
+        opt.addEventListener('click', () => {
+          options.forEach(o => o.classList.remove('selected'));
+          opt.classList.add('selected');
+          const fullName = opt.getAttribute('data-full-name');
+          const matched = ghRepos.find(r => r.full_name === fullName);
+          selectedGitHubRepo = matched ? { ...matched, connected_account_id: activeAccountId } : {
+            name: opt.getAttribute('data-name'),
+            full_name: fullName,
+            default_branch: opt.getAttribute('data-branch'),
+            is_private: opt.getAttribute('data-private') === 'true',
+            primary_language: opt.getAttribute('data-lang'),
+            id: parseInt(opt.getAttribute('data-id')),
+            connected_account_id: activeAccountId
+          };
+        });
       });
-    });
+    };
+    bindRepoOptions();
+
+    // Account Switcher Listener
+    const switcher = document.getElementById('modal-account-switcher');
+    if (switcher) {
+      switcher.addEventListener('change', async () => {
+        const newAccId = parseInt(switcher.value);
+        activeAccountId = newAccId;
+        const listContainer = document.getElementById('modal-repo-options-list');
+        if (listContainer) {
+          listContainer.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--muted);"><svg class="icon animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg><span style="margin-left: 6px; font-size: 11px;">Loading repositories for selected account...</span></div>`;
+        }
+        try {
+          ghRepos = await fetchRepos(newAccId);
+          if (listContainer) {
+            listContainer.innerHTML = renderRepoList(ghRepos);
+            selectedGitHubRepo = ghRepos && ghRepos.length > 0 ? { ...ghRepos[0], connected_account_id: newAccId } : null;
+            bindRepoOptions();
+          }
+          const confirmBtn = document.getElementById('btn-modal-confirm-select');
+          if (confirmBtn) {
+            confirmBtn.disabled = !ghRepos || ghRepos.length === 0;
+          }
+        } catch (err) {
+          if (listContainer) {
+            listContainer.innerHTML = `<div style="padding: 16px; color: #b91c1c; font-size: 11px;">Failed to load repositories: ${escapeHtml(err.message)}</div>`;
+          }
+        }
+      });
+    }
 
     const searchInput = document.getElementById('modal-repo-search-input');
     if (searchInput) {
       searchInput.addEventListener('input', () => {
         const q = searchInput.value.trim().toLowerCase();
+        const options = body.querySelectorAll('.repo-option');
         options.forEach(opt => {
           const fn = (opt.getAttribute('data-full-name') || '').toLowerCase();
           opt.style.display = fn.includes(q) ? 'flex' : 'none';
@@ -1571,7 +2716,8 @@ async function renderModalStep2() {
             default_branch: selectedGitHubRepo.default_branch || 'main',
             is_private: selectedGitHubRepo.is_private || false,
             primary_language: selectedGitHubRepo.primary_language || null,
-            github_repo_id: selectedGitHubRepo.id
+            github_repo_id: selectedGitHubRepo.id,
+            connected_account_id: selectedGitHubRepo.connected_account_id || activeAccountId || null
           });
 
           renderModalStep3(registered);
@@ -1582,12 +2728,11 @@ async function renderModalStep2() {
         }
       });
     }
-
   } catch (err) {
     body.innerHTML = `
-      <div class="empty-state" style="padding: 24px; text-align: center;">
-        <h3 style="color: var(--danger);">Failed to Fetch Repositories</h3>
-        <p style="color: var(--muted); font-size: 11px; margin: 8px 0 16px;">${escapeHtml(err.message || 'Error communicating with GitHub API.')}</p>
+      <div style="padding: 24px; text-align: center; color: var(--danger);">
+        <strong>Failed to load repositories from GitHub</strong>
+        <p style="font-size: 11px; color: var(--muted); margin: 6px 0 16px;">${escapeHtml(err.message)}</p>
         <button type="button" class="btn btn-secondary" onclick="renderModalStep1()">Back to Step 1</button>
       </div>
     `;
@@ -1932,6 +3077,21 @@ window.deleteRepo = async function(repoId, fullName, triggerBtn = null) {
   }
 };
 
+function getTimeBasedGreeting(fullName, date = new Date()) {
+  const hour = (date instanceof Date ? date : new Date()).getHours();
+  let prefix = 'Good night';
+  if (hour >= 5 && hour < 12) {
+    prefix = 'Good morning';
+  } else if (hour >= 12 && hour < 17) {
+    prefix = 'Good afternoon';
+  } else if (hour >= 17 && hour < 21) {
+    prefix = 'Good evening';
+  }
+
+  const firstName = (fullName && typeof fullName === 'string') ? fullName.trim().split(/\s+/)[0] : '';
+  return firstName ? `${prefix}, ${firstName}` : prefix;
+}
+
 let currentDashboardRequestId = 0;
 
 async function hydrateDashboardView(targetRepoId = null) {
@@ -1960,26 +3120,50 @@ async function hydrateDashboardView(targetRepoId = null) {
     const metricValues = document.querySelectorAll('.metric-value');
     const metricBadges = document.querySelectorAll('.metric-card .badge');
     const archContainer = document.getElementById('dashboard-architecture-container');
+    const techStackContainer = document.getElementById('dashboard-tech-stack-container');
     const commitsContainer = document.getElementById('dashboard-recent-commits');
     const questionsContainer = document.getElementById('dashboard-recent-questions');
     const greetingHeader = document.querySelector('.page-header h1');
     const lastIndexedBtn = document.querySelector('.header-actions .btn-secondary span');
     const askCodeMindBtn = document.querySelector('.header-actions .btn-primary');
 
-    // 1. Immediately clear stale data and show loading indicators
+    // 1. Immediately apply local time-based greeting from cached profile or asynchronous fetch
+    if (greetingHeader) {
+      const cachedUser = window._codemind_cached_user;
+      if (cachedUser && cachedUser.full_name) {
+        greetingHeader.textContent = getTimeBasedGreeting(cachedUser.full_name);
+      } else {
+        CodeMindAPI.getCurrentUser().then(u => {
+          if (u && u.full_name && greetingHeader && currentDashboardRequestId === requestId) {
+            greetingHeader.textContent = getTimeBasedGreeting(u.full_name);
+          }
+        }).catch(() => {});
+      }
+    }
+
+    // 2. Immediately clear stale data and show loading indicators
     metricValues.forEach(el => { el.textContent = '—'; });
 
     if (activeRepo) {
       if (topbarRepo) topbarRepo.textContent = activeRepo.name;
       if (topbarBranch) topbarBranch.textContent = activeRepo.default_branch || 'main';
       if (bannerRepo) bannerRepo.textContent = activeRepo.full_name;
-      if (bannerDesc) bannerDesc.textContent = `${activeRepo.description || 'Repository'} · ${activeRepo.primary_language || 'Polyglot'}`;
+      const initialSummary = activeRepo.tech_stack?.summary?.full_summary || activeRepo.primary_language || 'Polyglot';
+      if (bannerDesc) bannerDesc.textContent = `${activeRepo.description || 'Repository'} · ${initialSummary}`;
       if (healthText) healthText.textContent = 'Loading repository metrics...';
       if (healthSub) healthSub.textContent = `Fetching indexed status on ${activeRepo.default_branch || 'main'}`;
       if (healthDot) healthDot.className = 'status-dot';
       if (askCodeMindBtn) askCodeMindBtn.href = `/assistant?repo=${activeRepo.id}`;
     }
 
+    if (techStackContainer) {
+      techStackContainer.innerHTML = `
+        <div style="padding: 24px 16px; text-align: center; color: var(--muted); font-size: 11.5px; width: 100%;">
+          Analyzing repository technology stack and evidence...
+        </div>
+      `;
+      initTechStackScrollControls();
+    }
     if (archContainer) {
       archContainer.innerHTML = `
         <div style="padding: 36px 16px; text-align: center; color: var(--muted); font-size: 11.5px; width: 100%;">
@@ -2024,199 +3208,8 @@ async function hydrateDashboardView(targetRepoId = null) {
       if (openAssistantLink) {
         openAssistantLink.setAttribute('href', `/assistant?repo=${activeRepo.id}`);
       }
-    }
-
-    // Fetch repository dashboard overview
-    const data = await CodeMindAPI.getDashboardOverview(activeRepo ? activeRepo.id : null);
-    
-    // Prevent slower responses from a previous repository selection from overwriting the latest selection
-    if (requestId !== currentDashboardRequestId) {
-      return;
-    }
-    if (!data) return;
-
-    if (greetingHeader && data.greeting) {
-      greetingHeader.textContent = data.greeting;
-    }
-
-    if (data.active_repository) {
-      const repo = data.active_repository;
-      if (topbarRepo) topbarRepo.textContent = repo.name;
-      if (topbarBranch) topbarBranch.textContent = repo.default_branch || 'main';
-      if (bannerRepo) bannerRepo.textContent = repo.full_name;
-      if (bannerDesc) bannerDesc.textContent = `${repo.description || 'Repository'} · ${repo.primary_language || 'Polyglot'}`;
-
-      const isReady = repo.status === 'ready';
-      const isIndexing = repo.status === 'indexing';
-      const isFailed = repo.status === 'failed';
-      const isPending = repo.status === 'pending';
-
-      if (healthText) {
-        healthText.textContent = isReady
-          ? 'Repository is ready'
-          : isIndexing
-          ? 'Indexing in progress'
-          : isFailed
-          ? 'Indexing failed'
-          : 'Not indexed yet';
-      }
-      if (healthSub) {
-        healthSub.textContent = isReady
-          ? `${formatNumber(data.files_indexed || 0)} files indexed on ${repo.default_branch || 'main'}`
-          : isIndexing
-          ? `Extracting AST symbols on ${repo.default_branch || 'main'}...`
-          : isFailed
-          ? 'Indexing encountered an error'
-          : `Click 'Index' to start code analysis`;
-      }
-      if (healthDot) {
-        healthDot.className = isReady
-          ? 'status-dot'
-          : isIndexing
-          ? 'status-dot warning'
-          : isFailed
-          ? 'status-dot danger'
-          : 'status-dot neutral';
-      }
-
-      if (lastIndexedBtn) {
-        lastIndexedBtn.textContent = repo.last_indexed_at ? `Last indexed ${formatTimeAgo(repo.last_indexed_at)}` : 'Not indexed';
-      }
-
-      // Display repository-specific metrics strictly from selected repository
-      if (metricValues.length >= 4) {
-        metricValues[0].textContent = formatNumber(data.files_indexed || 0);
-        metricValues[1].textContent = formatNumber(data.functions_classes || 0);
-        metricValues[2].textContent = formatNumber(data.apis_detected || 0);
-        metricValues[3].textContent = formatNumber(data.dependencies_mapped || 0);
-      }
-
-      metricBadges.forEach(badge => {
-        if (isReady && (data.files_indexed || 0) > 0) {
-          badge.className = 'badge badge-success';
-          badge.textContent = 'Indexed';
-        } else if (isIndexing) {
-          badge.className = 'badge badge-warning';
-          badge.textContent = 'Indexing';
-        } else if (isFailed) {
-          badge.className = 'badge badge-danger';
-          badge.textContent = 'Failed';
-        } else {
-          badge.className = 'badge badge-neutral';
-          badge.textContent = 'Not Indexed';
-        }
-      });
-
-      // Hydrate Recent Commits for the selected repository
-      if (commitsContainer) {
-        try {
-          const commitsRes = await CodeMindAPI.getCommits(repo.id, { perPage: 3 });
-          if (requestId !== currentDashboardRequestId) return;
-          if (commitsRes && commitsRes.commits && commitsRes.commits.length > 0) {
-            commitsContainer.innerHTML = commitsRes.commits.map(c => {
-              const author = escapeHtml(c.author_name || 'Contributor');
-              let timeStr = '';
-              if (c.author_date) {
-                timeStr = formatRelativeTime(c.author_date);
-              }
-              if (!timeStr && c.time_ago && c.time_ago !== 'Recently') {
-                timeStr = c.time_ago;
-              } else if (!timeStr && c.committed_at) {
-                timeStr = formatRelativeTime(c.committed_at);
-              } else if (!timeStr) {
-                timeStr = c.time_ago || 'Recently';
-              }
-
-              const fullMsg = escapeHtml(c.message || 'Commit');
-              const firstLine = escapeHtml((c.message || 'Commit').split('\n')[0]);
-              const shaShort = escapeHtml((c.short_sha || c.commit_sha || c.sha || '').substring(0, 7));
-
-              return `
-                <a href="/git_history?repo=${repo.id}&sha=${encodeURIComponent(c.commit_sha || c.sha || '')}" class="commit-row" title="${fullMsg}">
-                  <div class="commit-main">
-                    <strong class="commit-msg">${firstLine}</strong>
-                    <div class="commit-meta">
-                      <span>${author}</span>
-                      <span>·</span>
-                      <span>${escapeHtml(timeStr)}</span>
-                    </div>
-                  </div>
-                  <code class="commit-sha-badge">${shaShort}</code>
-                </a>
-              `;
-            }).join('');
-          } else {
-            commitsContainer.innerHTML = `
-              <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
-                No commits retrieved yet for this repository.
-              </div>
-            `;
-          }
-        } catch (e) {
-          if (requestId !== currentDashboardRequestId) return;
-          commitsContainer.innerHTML = `
-            <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
-              Could not load commits (${escapeHtml(e.message)}).
-            </div>
-          `;
-        }
-      }
-
-      // Hydrate Architecture Overview for the selected repository
-      if (archContainer) {
-        try {
-          const graphRes = await CodeMindAPI.getRepositoryGraph(repo.id, 12);
-          if (requestId !== currentDashboardRequestId) return;
-          if (graphRes && graphRes.nodes && graphRes.nodes.length > 0) {
-            const displayNodes = graphRes.nodes.slice(0, 6);
-            archContainer.innerHTML = `
-              <div class="architecture-grid">
-                ${displayNodes.map(n => {
-                  const nodeType = (n.node_type || 'Component').toLowerCase();
-                  const typeBadgeClass = nodeType === 'class' ? 'badge-primary' :
-                                         nodeType === 'function' ? 'badge-info' :
-                                         nodeType === 'service' ? 'badge-warning' : 'badge-neutral';
-                  const fullName = escapeHtml(n.name || 'Component');
-                  const fullPath = escapeHtml(n.file_path || 'AST Symbol');
-                  return `
-                    <a href="/dependencies?repo=${repo.id}&node=${encodeURIComponent(n.name)}" class="arch-card-item" title="${fullName} (${fullPath})">
-                      <div class="arch-card-header">
-                        <span class="badge ${typeBadgeClass}" style="font-size: 0.68rem; text-transform: uppercase;">${escapeHtml(n.node_type || 'Component')}</span>
-                        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false" style="color: var(--muted);"><path d="m9 18 6-6-6-6"/></svg>
-                      </div>
-                      <div>
-                        <strong class="arch-card-name" title="${fullName}">${fullName}</strong>
-                        <small class="arch-card-path" title="${fullPath}">${fullPath}</small>
-                      </div>
-                    </a>
-                  `;
-                }).join('')}
-              </div>
-              ${graphRes.nodes.length > 6 ? `
-                <div style="margin-top: 12px; text-align: right;">
-                  <a href="/dependencies?repo=${repo.id}" style="font-size: 0.78rem; font-weight: 600; color: var(--primary); text-decoration: none;">
-                    Explore all ${graphRes.nodes.length} entities in graph →
-                  </a>
-                </div>
-              ` : ''}
-            `;
-          } else {
-            archContainer.innerHTML = `
-              <div style="padding: 28px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem; width: 100%;">
-                No architecture relationships mapped yet. Complete repository indexing to synthesize component architecture.
-              </div>
-            `;
-          }
-        } catch (e) {
-          if (requestId !== currentDashboardRequestId) return;
-          archContainer.innerHTML = `
-            <div style="padding: 28px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem; width: 100%;">
-              Architecture overview available after indexing.
-            </div>
-          `;
-        }
-      }
     } else {
+      // No active repository selected
       if (topbarRepo) topbarRepo.textContent = 'No repository';
       if (bannerRepo) bannerRepo.textContent = 'No repository connected';
       if (bannerDesc) bannerDesc.textContent = 'Connect a repository to begin automated code analysis';
@@ -2230,6 +3223,14 @@ async function hydrateDashboardView(targetRepoId = null) {
         badge.textContent = 'Not Indexed';
       });
 
+      if (techStackContainer) {
+        techStackContainer.innerHTML = `
+          <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem; width: 100%;">
+            Connect a repository to view detected technology stack and evidence.
+          </div>
+        `;
+        initTechStackScrollControls();
+      }
       if (archContainer) {
         archContainer.innerHTML = `
           <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem; width: 100%;">
@@ -2244,29 +3245,272 @@ async function hydrateDashboardView(targetRepoId = null) {
           </div>
         `;
       }
-    }
-
-    if (questionsContainer) {
-      if (!data.recent_questions || data.recent_questions.length === 0) {
-        const repoParam = activeRepo ? `?repo=${activeRepo.id}` : '';
+      if (questionsContainer) {
         questionsContainer.innerHTML = `
-          <div class="empty-state" style="padding: 18px 12px; text-align: center;">
-            <p class="empty-state-desc" style="margin: 0 0 10px; font-size: 0.82rem; color: var(--text-muted);">No AI questions asked yet for this repository.</p>
-            <a href="/assistant${repoParam}" class="btn btn-secondary btn-sm" style="text-decoration:none;"><span>Ask your first question</span></a>
+          <div style="padding: 18px 12px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+            Connect a repository to view AI questions.
           </div>
         `;
-      } else {
-        questionsContainer.innerHTML = data.recent_questions.map(q => `
-          <a href="/assistant?conversation_id=${encodeURIComponent(q.conversation_id)}" class="activity-item" style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid var(--border); text-decoration:none; color:inherit; border-radius:6px; transition:background 0.2s;" onmouseover="this.style.background='var(--surface-subtle, rgba(255,255,255,0.03))'" onmouseout="this.style.background='transparent'">
-            <div style="flex:1; min-width:0; margin-right:12px;">
-              <strong style="display:block; font-size:0.83rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);">${escapeHtml(q.title || q.question)}</strong>
-              ${q.answer_preview ? `<small style="color:var(--muted); font-size:0.74rem; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px;">${escapeHtml(q.answer_preview)}</small>` : ''}
-            </div>
-            <small style="color:var(--muted); font-size:0.72rem; white-space:nowrap;">${formatRelativeTime(q.created_at)}</small>
-          </a>
-        `).join('');
       }
+      return;
     }
+
+    // 3. Decouple sub-tasks so failure or slow response in one does not block others
+    const overviewPromise = (async () => {
+      try {
+        const data = await CodeMindAPI.getDashboardOverview(activeRepo.id);
+        if (requestId !== currentDashboardRequestId) return;
+        if (!data) return;
+
+        if (greetingHeader && data.greeting) {
+          greetingHeader.textContent = data.greeting;
+        }
+
+        if (data.active_repository) {
+          const repo = data.active_repository;
+          if (topbarRepo) topbarRepo.textContent = repo.name;
+          if (topbarBranch) topbarBranch.textContent = repo.default_branch || 'main';
+          if (bannerRepo) bannerRepo.textContent = repo.full_name;
+          const fullSummary = repo.tech_stack?.summary?.full_summary || repo.primary_language || 'Polyglot';
+          if (bannerDesc) bannerDesc.textContent = `${repo.description || 'Repository'} · ${fullSummary}`;
+
+          if (techStackContainer) {
+            try {
+              techStackContainer.innerHTML = renderTechStackOverview(repo.tech_stack, repo.id);
+            } catch (tsErr) {
+              console.error('[hydrateDashboardView] Tech stack render error:', tsErr);
+              techStackContainer.innerHTML = `
+                <div style="padding: 24px 16px; text-align: center; color: var(--muted); font-size: 11.5px; width: 100%;">
+                  No framework manifests or dependencies detected yet. Re-index repository to scan code.
+                </div>
+              `;
+            }
+            initTechStackScrollControls();
+            setTimeout(updateTechStackScrollButtons, 50);
+          }
+
+          const isReady = repo.status === 'ready';
+          const isIndexing = repo.status === 'indexing';
+          const isFailed = repo.status === 'failed';
+
+          if (healthText) {
+            healthText.textContent = isReady
+              ? 'Repository is ready'
+              : isIndexing
+              ? 'Indexing in progress'
+              : isFailed
+              ? 'Indexing failed'
+              : 'Not indexed yet';
+          }
+          if (healthSub) {
+            healthSub.textContent = isReady
+              ? `${formatNumber(data.files_indexed || 0)} files indexed on ${repo.default_branch || 'main'}`
+              : isIndexing
+              ? `Extracting AST symbols on ${repo.default_branch || 'main'}...`
+              : isFailed
+              ? 'Indexing encountered an error'
+              : `Click 'Index' to start code analysis`;
+          }
+          if (healthDot) {
+            healthDot.className = isReady
+              ? 'status-dot'
+              : isIndexing
+              ? 'status-dot warning'
+              : isFailed
+              ? 'status-dot danger'
+              : 'status-dot neutral';
+          }
+
+          if (lastIndexedBtn) {
+            lastIndexedBtn.textContent = repo.last_indexed_at ? `Last indexed ${formatTimeAgo(repo.last_indexed_at)}` : 'Not indexed';
+          }
+
+          // Display repository-specific metrics strictly from selected repository
+          if (metricValues.length >= 4) {
+            metricValues[0].textContent = formatNumber(data.files_indexed !== null && data.files_indexed !== undefined ? data.files_indexed : 0);
+            metricValues[1].textContent = formatNumber(data.functions_classes !== null && data.functions_classes !== undefined ? data.functions_classes : 0);
+            metricValues[2].textContent = formatNumber(data.apis_detected !== null && data.apis_detected !== undefined ? data.apis_detected : 0);
+            metricValues[3].textContent = formatNumber(data.dependencies_mapped !== null && data.dependencies_mapped !== undefined ? data.dependencies_mapped : 0);
+          }
+
+          metricBadges.forEach(badge => {
+            if (isReady && (data.files_indexed || 0) > 0) {
+              badge.className = 'badge badge-success';
+              badge.textContent = 'Indexed';
+            } else if (isIndexing) {
+              badge.className = 'badge badge-warning';
+              badge.textContent = 'Indexing';
+            } else if (isFailed) {
+              badge.className = 'badge badge-danger';
+              badge.textContent = 'Failed';
+            } else {
+              badge.className = 'badge badge-neutral';
+              badge.textContent = 'Not Indexed';
+            }
+          });
+        }
+
+        if (questionsContainer) {
+          if (!data.recent_questions || data.recent_questions.length === 0) {
+            questionsContainer.innerHTML = `
+              <div class="empty-state" style="padding: 18px 12px; text-align: center;">
+                <p class="empty-state-desc" style="margin: 0 0 10px; font-size: 0.82rem; color: var(--text-muted);">No AI questions asked yet for this repository.</p>
+                <a href="/assistant?repo=${activeRepo.id}" class="btn btn-secondary btn-sm" style="text-decoration:none;"><span>Ask your first question</span></a>
+              </div>
+            `;
+          } else {
+            questionsContainer.innerHTML = data.recent_questions.map(q => `
+              <a href="/assistant?conversation_id=${encodeURIComponent(q.conversation_id)}&repo=${encodeURIComponent(activeRepo.id)}" class="activity-item" style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid var(--border); text-decoration:none; color:inherit; border-radius:6px; transition:background 0.2s;" onmouseover="this.style.background='var(--surface-subtle, rgba(255,255,255,0.03))'" onmouseout="this.style.background='transparent'">
+                <div style="flex:1; min-width:0; margin-right:12px;">
+                  <strong style="display:block; font-size:0.83rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text);">${escapeHtml(q.title || q.question)}</strong>
+                  ${q.answer_preview ? `<small style="color:var(--muted); font-size:0.74rem; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px;">${escapeHtml(q.answer_preview)}</small>` : ''}
+                </div>
+                <small style="color:var(--muted); font-size:0.72rem; white-space:nowrap;">${formatRelativeTime(q.created_at)}</small>
+              </a>
+            `).join('');
+          }
+        }
+      } catch (err) {
+        if (requestId !== currentDashboardRequestId) return;
+        console.error('[hydrateDashboardView] Overview request failed:', err);
+        if (healthText) healthText.textContent = 'Metrics unavailable';
+        if (healthSub) healthSub.textContent = 'Could not retrieve repository metrics from server';
+        if (healthDot) healthDot.className = 'status-dot danger';
+        metricValues.forEach(el => { el.textContent = '—'; });
+        if (techStackContainer) {
+          techStackContainer.innerHTML = `
+            <div style="padding: 24px 16px; text-align: center; color: var(--muted); font-size: 11.5px; width: 100%;">
+              Technology stack unavailable. <a href="javascript:void(0)" onclick="hydrateDashboardView(${activeRepo.id})" style="color: var(--primary); text-decoration: underline;">Retry</a>
+            </div>
+          `;
+          initTechStackScrollControls();
+        }
+        if (questionsContainer) {
+          questionsContainer.innerHTML = `
+            <div style="padding: 24px 12px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+              Could not load repository investigations.
+            </div>
+          `;
+        }
+      }
+    })();
+
+    // 4. Hydrate Recent Commits for the selected repository independently
+    const commitsPromise = (async () => {
+      if (!commitsContainer) return;
+      try {
+        const commitsRes = await CodeMindAPI.getCommits(activeRepo.id, { perPage: 3 });
+        if (requestId !== currentDashboardRequestId) return;
+        if (commitsRes && commitsRes.commits && commitsRes.commits.length > 0) {
+          commitsContainer.innerHTML = commitsRes.commits.map(c => {
+            const author = escapeHtml(c.author_name || 'Contributor');
+            let timeStr = '';
+            if (c.author_date) {
+              timeStr = formatRelativeTime(c.author_date);
+            }
+            if (!timeStr && c.time_ago && c.time_ago !== 'Recently') {
+              timeStr = c.time_ago;
+            } else if (!timeStr && c.committed_at) {
+              timeStr = formatRelativeTime(c.committed_at);
+            } else if (!timeStr) {
+              timeStr = c.time_ago || 'Recently';
+            }
+
+            const fullMsg = escapeHtml(c.message || 'Commit');
+            const firstLine = escapeHtml((c.message || 'Commit').split('\n')[0]);
+            const shaShort = escapeHtml((c.short_sha || c.commit_sha || c.sha || '').substring(0, 7));
+
+            return `
+              <a href="/git_history?repo=${activeRepo.id}&sha=${encodeURIComponent(c.commit_sha || c.sha || '')}" class="commit-row" title="${fullMsg}">
+                <div class="commit-main">
+                  <strong class="commit-msg">${firstLine}</strong>
+                  <div class="commit-meta">
+                    <span>${author}</span>
+                    <span>·</span>
+                    <span>${escapeHtml(timeStr)}</span>
+                  </div>
+                </div>
+                <code class="commit-sha-badge">${shaShort}</code>
+              </a>
+            `;
+          }).join('');
+        } else {
+          commitsContainer.innerHTML = `
+            <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+              No commits retrieved yet for this repository.
+            </div>
+          `;
+        }
+      } catch (e) {
+        if (requestId !== currentDashboardRequestId) return;
+        console.error('[hydrateDashboardView] Commits request failed:', e);
+        commitsContainer.innerHTML = `
+          <div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem;">
+            Could not load commits (${escapeHtml(e.message || 'unavailable')}).
+          </div>
+        `;
+      }
+    })();
+
+    // 5. Hydrate Architecture Overview for the selected repository independently
+    const archPromise = (async () => {
+      if (!archContainer) return;
+      try {
+        const graphRes = await CodeMindAPI.getRepositoryGraph(activeRepo.id, 12);
+        if (requestId !== currentDashboardRequestId) return;
+        if (graphRes && graphRes.nodes && graphRes.nodes.length > 0) {
+          const displayNodes = graphRes.nodes.slice(0, 6);
+          archContainer.innerHTML = `
+            <div class="architecture-grid">
+              ${displayNodes.map(n => {
+                const rawType = (n.node_type || n.type || 'Component');
+                const nodeType = rawType.toLowerCase();
+                const typeBadgeClass = nodeType === 'class' ? 'badge-primary' :
+                                       nodeType === 'function' ? 'badge-info' :
+                                       nodeType === 'service' ? 'badge-warning' : 'badge-neutral';
+                const fullName = escapeHtml(n.name || 'Component');
+                const fullPath = escapeHtml(n.file_path || 'AST Symbol');
+                return `
+                  <a href="/dependencies?repo=${activeRepo.id}&node=${encodeURIComponent(n.name)}" class="arch-card-item" title="${fullName} (${fullPath})">
+                    <div class="arch-card-header">
+                      <span class="badge ${typeBadgeClass}" style="font-size: 0.68rem; text-transform: uppercase;">${escapeHtml(rawType)}</span>
+                      <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false" style="color: var(--muted);"><path d="m9 18 6-6-6-6"/></svg>
+                    </div>
+                    <div>
+                      <strong class="arch-card-name" title="${fullName}">${fullName}</strong>
+                      <small class="arch-card-path" title="${fullPath}">${fullPath}</small>
+                    </div>
+                  </a>
+                `;
+              }).join('')}
+            </div>
+            ${graphRes.nodes.length > 6 ? `
+              <div style="margin-top: 12px; text-align: right;">
+                <a href="/dependencies?repo=${activeRepo.id}" style="font-size: 0.78rem; font-weight: 600; color: var(--primary); text-decoration: none;">
+                  Explore all ${graphRes.nodes.length} entities in graph →
+                </a>
+              </div>
+            ` : ''}
+          `;
+        } else {
+          archContainer.innerHTML = `
+            <div style="padding: 28px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem; width: 100%;">
+              No architecture relationships mapped yet. Complete repository indexing to synthesize component architecture.
+            </div>
+          `;
+        }
+      } catch (e) {
+        if (requestId !== currentDashboardRequestId) return;
+        console.error('[hydrateDashboardView] Architecture graph request failed:', e);
+        archContainer.innerHTML = `
+          <div style="padding: 28px 16px; text-align: center; color: var(--text-muted); font-size: 0.82rem; width: 100%;">
+            Could not load architecture graph (${escapeHtml(e.message || 'unavailable')}).
+          </div>
+        `;
+      }
+    })();
+
+    await Promise.allSettled([overviewTask, commitsPromise, archPromise]);
   } catch (err) {
     console.warn('Error in hydrateDashboardView:', err);
   }
@@ -2310,6 +3554,7 @@ window.switchActiveRepository = async function(repoId) {
     if (!target) return;
 
     localStorage.setItem('codemind_active_repo_id', target.id);
+    sessionStorage.removeItem('codemind_active_conversation_id');
 
     // Update topbar header immediately
     const topbarRepo = document.querySelector('.repo-selector strong');
@@ -2332,11 +3577,13 @@ window.switchActiveRepository = async function(repoId) {
     if (isDashboard) {
       const url = new URL(window.location);
       url.searchParams.set('repo', target.id);
+      url.searchParams.delete('conversation_id');
       window.history.pushState({}, '', url);
       await hydrateDashboardView(target.id);
     } else {
       const url = new URL(window.location);
       url.searchParams.set('repo', target.id);
+      url.searchParams.delete('conversation_id');
       window.location.href = url.toString();
     }
   } catch (err) {
@@ -2365,6 +3612,38 @@ function formatRelativeTime(dateStr) {
  * inline code, blockquotes/callouts, responsive tables, lists, and clickable citations.
  * Automatically sanitizes content to prevent XSS.
  */
+/**
+ * Universal Human-Readable Mathematical Formula Renderer (KaTeX)
+ * Formats inline \( ... \) and display \[ ... \] equations cleanly.
+ * Normalizes unescaped underscores in \text{...} and handles malformed math gracefully.
+ */
+function renderKatex(tex, isDisplay) {
+  let cleanTex = String(tex || '').trim();
+  if (!cleanTex) return '';
+
+  // Normalize unescaped underscores inside \text{...} so LaTeX does not treat them as math subscripts
+  cleanTex = cleanTex.replace(/\\text\{([^{}]+)\}/g, (m, t) => '\\text{' + t.replace(/_/g, '\\_') + '}');
+
+  if (typeof katex !== 'undefined' && typeof katex.renderToString === 'function') {
+    try {
+      return katex.renderToString(cleanTex, {
+        displayMode: isDisplay,
+        throwOnError: false,
+        errorColor: '#f87171'
+      });
+    } catch (e) {
+      console.warn('KaTeX rendering error:', e);
+    }
+  }
+
+  // Graceful fallback when KaTeX is unavailable or fails
+  const escaped = escapeHtml(cleanTex);
+  if (isDisplay) {
+    return `<div class="katex-fallback"><code>\\[ ${escaped} \\]</code></div>`;
+  }
+  return `<span class="katex-fallback"><code>\\(${escaped}\\)</code></span>`;
+}
+
 function renderMarkdown(content, citations = []) {
   if (!content) return '';
 
@@ -2392,6 +3671,65 @@ function renderMarkdown(content, citations = []) {
     const placeholder = `@@CM_INLINE_CODE_${inlineCodes.length}@@`;
     inlineCodes.push(code);
     return placeholder;
+  });
+
+  // 3.5 Protect display math blocks using collision-free tokens
+  const mathDisplayBlocks = [];
+  // Match standard display delimiters \[ ... \] and $$ ... $$
+  text = text.replace(/\\\[([\s\S]*?)\\\]/g, (match, tex) => {
+    const placeholder = `@@CM_MATH_DISPLAY_${mathDisplayBlocks.length}@@`;
+    mathDisplayBlocks.push(tex);
+    return `\n\n${placeholder}\n\n`;
+  });
+  text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, tex) => {
+    const placeholder = `@@CM_MATH_DISPLAY_${mathDisplayBlocks.length}@@`;
+    mathDisplayBlocks.push(tex);
+    return `\n\n${placeholder}\n\n`;
+  });
+  // Handle streaming response chunks that end with an unclosed display math delimiter
+  text = text.replace(/\\\[([\s\S]+)$/, (match, tex) => {
+    const placeholder = `@@CM_MATH_DISPLAY_${mathDisplayBlocks.length}@@`;
+    mathDisplayBlocks.push(tex);
+    return `\n\n${placeholder}\n\n`;
+  });
+  text = text.replace(/\$\$([\s\S]+)$/, (match, tex) => {
+    const placeholder = `@@CM_MATH_DISPLAY_${mathDisplayBlocks.length}@@`;
+    mathDisplayBlocks.push(tex);
+    return `\n\n${placeholder}\n\n`;
+  });
+  // Clean up trailing unclosed delimiter without body during active streaming
+  text = text.replace(/(?:\\\[|\$\$)$/, '');
+
+  // 3.6 Protect inline math blocks using collision-free tokens
+  const mathInlineBlocks = [];
+  // Match standard inline delimiters \( ... \)
+  text = text.replace(/\\\(([\s\S]*?)\\\)/g, (match, tex) => {
+    const placeholder = `@@CM_MATH_INLINE_${mathInlineBlocks.length}@@`;
+    mathInlineBlocks.push(tex);
+    return placeholder;
+  });
+  // Handle streaming response chunks that end with an unclosed inline math delimiter
+  text = text.replace(/\\\(([\s\S]+)$/, (match, tex) => {
+    const placeholder = `@@CM_MATH_INLINE_${mathInlineBlocks.length}@@`;
+    mathInlineBlocks.push(tex);
+    return placeholder;
+  });
+  // Clean up trailing unclosed inline delimiter without body during active streaming
+  text = text.replace(/\\\($/, '');
+
+  // Support inline $...$ when not currency (e.g. $E=mc^2$)
+  text = text.replace(/(^|[^\\\$])\$(?!\d|\s)([^\$\n]+?)(?<!\s)\$(?!\$)/g, (match, prefix, tex) => {
+    if (/^\s*\d+(?:\.\d+)?\s*$/.test(tex)) return match;
+    const placeholder = `@@CM_MATH_INLINE_${mathInlineBlocks.length}@@`;
+    mathInlineBlocks.push(tex);
+    return `${prefix}${placeholder}`;
+  });
+  // Handle streaming unclosed inline $
+  text = text.replace(/(^|[^\\\$])\$(?!\d|\s)([^\$\n]+)$/, (match, prefix, tex) => {
+    if (/^\s*\d+(?:\.\d+)?\s*$/.test(tex)) return match;
+    const placeholder = `@@CM_MATH_INLINE_${mathInlineBlocks.length}@@`;
+    mathInlineBlocks.push(tex);
+    return `${prefix}${placeholder}`;
   });
 
   // 4. HTML escape remaining prose for strict XSS prevention
@@ -2489,7 +3827,7 @@ function renderMarkdown(content, citations = []) {
   const formattedParas = paragraphs.map(p => {
     const trimmed = p.trim();
     if (!trimmed) return '';
-    if (/^<(h[1-4]|ul|ol|blockquote|div|hr|table)/i.test(trimmed) || /^@@CM_CODE_BLOCK_\d+@@$/.test(trimmed)) {
+    if (/^<(h[1-4]|ul|ol|blockquote|div|hr|table)/i.test(trimmed) || /^@@CM_CODE_BLOCK_\d+@@$/.test(trimmed) || /^@@CM_MATH_DISPLAY_\d+@@$/.test(trimmed)) {
       return trimmed;
     }
     const withBreaks = trimmed.replace(/\n/g, '<br>');
@@ -2524,6 +3862,22 @@ function renderMarkdown(content, citations = []) {
     `;
   });
 
+  // 15.5 Restore display math
+  text = text.replace(/@@CM_MATH_DISPLAY_(\d+)@@/g, (match, idx) => {
+    const tex = mathDisplayBlocks[parseInt(idx)];
+    if (tex === undefined) return '';
+    const rendered = renderKatex(tex, true);
+    return `<div class="math-display">${rendered}</div>`;
+  });
+
+  // 15.6 Restore inline math
+  text = text.replace(/@@CM_MATH_INLINE_(\d+)@@/g, (match, idx) => {
+    const tex = mathInlineBlocks[parseInt(idx)];
+    if (tex === undefined) return '';
+    const rendered = renderKatex(tex, false);
+    return `<span class="math-inline">${rendered}</span>`;
+  });
+
   // 16. Final safety sweep: strip any orphan placeholders before content reaches visible DOM
   text = text.replace(/@@CM_[A-Za-z0-9_]+@@/g, '');
 
@@ -2532,6 +3886,12 @@ function renderMarkdown(content, citations = []) {
 
 async function hydrateAssistantView() {
   let activeRepo = await getActiveRepository();
+  let allLoadedRepos = [];
+  try {
+    allLoadedRepos = (await CodeMindAPI.getRepositories()) || [];
+  } catch (e) {
+    allLoadedRepos = [];
+  }
   const assistantLayout = document.querySelector('.assistant-layout');
   const historySidebar = document.getElementById('history-sidebar');
   const historyToggleBtn = document.getElementById('history-toggle-btn');
@@ -2702,16 +4062,37 @@ async function hydrateAssistantView() {
     }
   }
 
+  let currentHistoryAbortController = null;
+  const initialEmptyPromptHtml = document.getElementById('assistant-empty-prompt')?.outerHTML || '';
+
   // --- Open Conversation ---
   async function openConversation(convId) {
     if (currentStreamAbortController) {
-      currentStreamAbortController.abort();
+      try { currentStreamAbortController.abort(); } catch (_) {}
       currentStreamAbortController = null;
     }
+    if (currentHistoryAbortController) {
+      try { currentHistoryAbortController.abort(); } catch (_) {}
+      currentHistoryAbortController = null;
+    }
+    currentHistoryAbortController = new AbortController();
+
     isSending = false;
     activeLoadingConvId = convId;
     currentConversationId = convId;
     sessionStorage.setItem('codemind_active_conversation_id', String(convId));
+
+    // Reset composer state immediately
+    const stopBtn = document.getElementById('stop-generating-btn');
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (sendBtn) {
+      sendBtn.style.display = 'grid';
+      sendBtn.disabled = !textarea?.value?.trim();
+    }
+    if (textarea) {
+      textarea.disabled = false;
+      autoResizeTextarea();
+    }
 
     // Update active highlight
     historyListEl?.querySelectorAll('.history-item').forEach(el => {
@@ -2725,174 +4106,221 @@ async function hydrateAssistantView() {
     // Close mobile history if open
     if (assistantLayout) assistantLayout.classList.remove('history-open');
 
-    // Hide empty starter prompt
-    const emptyPrompt = document.getElementById('assistant-empty-prompt');
-    if (emptyPrompt) emptyPrompt.style.display = 'none';
-
     // Reset center panel scroll position immediately when switching conversations
     if (messagesContainer) messagesContainer.scrollTop = 0;
 
-    // Show loading in messages container
+    // Show conversation loading skeleton immediately
     messagesContainer.innerHTML = `
-      <div style="padding: 40px; text-align: center; color: var(--muted);">
-        <svg class="icon animate-spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="margin-bottom:8px;" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-        <p style="font-size:12px;">Loading conversation history...</p>
+      <div class="conversation-skeleton-container" role="status" aria-label="Loading conversation history">
+        <div class="conv-skeleton-msg">
+          <div class="conv-skeleton-avatar"></div>
+          <div class="conv-skeleton-bubble">
+            <div class="conv-skeleton-line short"></div>
+            <div class="conv-skeleton-line medium"></div>
+          </div>
+        </div>
+        <div class="conv-skeleton-msg" style="align-self: flex-start; width: 100%;">
+          <div class="conv-skeleton-avatar" style="background:#e0e7ff;"></div>
+          <div class="conv-skeleton-bubble">
+            <div class="conv-skeleton-line long"></div>
+            <div class="conv-skeleton-line medium"></div>
+            <div class="conv-skeleton-line short"></div>
+          </div>
+        </div>
       </div>
     `;
 
     try {
-      const conv = await CodeMindAPI.getAssistantConversation(convId);
+      const conv = await CodeMindAPI.getAssistantConversation(convId, {
+        signal: currentHistoryAbortController.signal
+      });
       if (activeLoadingConvId !== convId) return;
 
       if (conv.repository_id) {
-        if (!activeRepo || activeRepo.id !== conv.repository_id) {
-          activeRepo = allLoadedRepos.find(r => r.id === conv.repository_id) || {
-            id: conv.repository_id,
-            name: conv.repository_name,
-            default_branch: conv.branch || 'main'
-          };
-          localStorage.setItem('codemind_active_repo_id', String(conv.repository_id));
-        }
+        const repoList = (typeof allLoadedRepos !== 'undefined' && Array.isArray(allLoadedRepos) && allLoadedRepos.length > 0)
+          ? allLoadedRepos
+          : (await CodeMindAPI.getRepositories().catch(() => [])) || [];
+        allLoadedRepos = repoList;
+
+        const matchedRepo = repoList.find(r => r.id === conv.repository_id);
+        activeRepo = matchedRepo || {
+          id: conv.repository_id,
+          name: conv.repository_name,
+          default_branch: conv.branch || 'main'
+        };
+        localStorage.setItem('codemind_active_repo_id', String(conv.repository_id));
+
+        // Update topbar repo selector to match the conversation
+        const topbarRepo = document.querySelector('.repo-selector strong');
+        const topbarBranch = document.getElementById('topbar-branch-text');
+        if (topbarRepo && activeRepo.name) topbarRepo.textContent = activeRepo.name;
+        if (topbarBranch) topbarBranch.textContent = activeRepo.default_branch || conv.branch || 'main';
       }
 
       if (titleEl) titleEl.textContent = conv.title || 'AI Code Assistant';
-      updateHeaderContext(conv.repository_name, conv.branch);
+      updateHeaderContext(conv.repository_name || (activeRepo ? activeRepo.name : null), conv.branch || (activeRepo ? activeRepo.default_branch : null));
 
       messagesContainer.innerHTML = '';
 
-      if (!conv.messages || conv.messages.length === 0) {
-        if (emptyPrompt) {
-          messagesContainer.appendChild(emptyPrompt);
-          emptyPrompt.style.display = 'block';
-        }
+      const msgs = Array.isArray(conv.messages) ? [...conv.messages] : [];
+      msgs.sort((a, b) => (a.id || 0) - (b.id || 0));
+
+      if (msgs.length === 0) {
+        messagesContainer.innerHTML = initialEmptyPromptHtml;
+        messagesContainer.querySelectorAll('.suggestion-prompt-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const text = btn.querySelector('span')?.textContent?.trim();
+            if (text && textarea) {
+              textarea.value = text;
+              autoResizeTextarea();
+              handleSend(text);
+            }
+          });
+        });
         return;
       }
 
       let lastCitations = [];
 
-      conv.messages.forEach(msg => {
-        if (msg.role === 'user') {
-          const userHtml = `
-            <div class="user-message">
-              <span class="avatar">You</span>
-              <div>
-                <span>You</span>
-                <p>${escapeHtml(msg.content)}</p>
-              </div>
-            </div>
-          `;
-          messagesContainer.insertAdjacentHTML('beforeend', userHtml);
-        } else if (msg.role === 'assistant') {
-          const isFailed = msg.status === 'failed';
-          const citations = msg.citations || [];
-          if (citations.length > 0) lastCitations = citations;
-
-          let citationsBadge = citations.length > 0
-            ? `<span class="badge badge-success"><svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg> <span class="badge-text">${citations.length} sources verified</span></span>`
-            : `<span class="badge badge-neutral">No source matches</span>`;
-
-          if (isFailed) {
-            citationsBadge = `<span class="badge badge-danger">Generation Error</span>`;
-          }
-
-          let metadata = msg.evidence_metadata || {};
-          let relatedHtml = '';
-          if (metadata.related_components && metadata.related_components.length > 0) {
-            relatedHtml = `
-              <div style="margin-top:14px;">
-                <h3 style="font-size:11.5px; margin:0 0 6px;">Related components</h3>
-                <div class="related-grid">
-                  ${metadata.related_components.map(c => `
-                    <a href="/code_viewer?file=${encodeURIComponent(c.file_path || '')}" style="text-decoration:none;">
-                      <button type="button">
-                        <span class="type-icon ${c.type === 'class' ? 'middleware' : 'service'}">${c.type ? c.type[0].toUpperCase() : 'C'}</span>
-                        <span>
-                          <strong>${escapeHtml(c.name)}</strong>
-                          <small>${escapeHtml(c.file_path || 'Repository component')}</small>
-                        </span>
-                        <span class="badge ${c.impact_level === 'DIRECT' ? 'badge-danger' : 'badge-warning'}">${c.impact_level || 'DIRECT'}</span>
-                      </button>
-                    </a>
-                  `).join('')}
-                </div>
-              </div>
-            `;
-          }
-
-          let riskHtml = '';
-          if (metadata.risk_callout && metadata.risk_callout.summary) {
-            riskHtml = `
-              <div class="risk-callout">
-                <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 3v4M21 12h-4M12 21v-4M3 12h4"/></svg>
+      msgs.forEach(msg => {
+        try {
+          if (msg.role === 'user') {
+            const userContent = msg.content || '';
+            const userHtml = `
+              <div class="user-message">
+                <span class="avatar">You</span>
                 <div>
-                  <strong>Potential impact</strong>
-                  <p>${escapeHtml(metadata.risk_callout.summary)}</p>
-                  <a href="/impact_analysis" style="text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:700; font-size:8.5px; color:#92400e;">
-                    Analyze change impact →
-                  </a>
+                  <span>You</span>
+                  <p>${escapeHtml(userContent)}</p>
                 </div>
               </div>
             `;
-          }
+            messagesContainer.insertAdjacentHTML('beforeend', userHtml);
+          } else if (msg.role === 'assistant') {
+            const isFailed = msg.status === 'failed';
+            const isCancelled = msg.status === 'cancelled';
+            const citations = Array.isArray(msg.citations) ? msg.citations : [];
+            if (citations.length > 0) lastCitations = citations;
 
-          let factsHtml = '';
-          if (metadata.facts) {
-            factsHtml = `
-              <div class="facts">
-                <span><i class="fact-dot confirmed"></i>Confirmed facts <b>${metadata.facts.confirmed || 0}</b></span>
-                <span><i class="fact-dot inference"></i>Inferences <b>${metadata.facts.inferences || 0}</b></span>
-                <span><i class="fact-dot unknown"></i>Unknowns <b>${metadata.facts.unknowns || 0}</b></span>
-              </div>
-            `;
-          }
+            let citationsBadge = citations.length > 0
+              ? `<span class="badge badge-success"><svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg> <span class="badge-text">${citations.length} sources verified</span></span>`
+              : `<span class="badge badge-neutral">No source matches</span>`;
 
-          let retryHtml = '';
-          if (isFailed) {
-            retryHtml = `
-              <div style="margin-top:10px;">
-                <button type="button" class="btn btn-secondary btn-sm retry-msg-btn">
-                  <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                  <span>Retry response</span>
-                </button>
-              </div>
-            `;
-          }
+            if (isFailed) {
+              citationsBadge = `<span class="badge badge-danger">Generation Error</span>`;
+            } else if (isCancelled) {
+              citationsBadge = `<span class="badge badge-neutral stream-status-badge"><span class="badge-text">Generation stopped</span></span>`;
+            }
 
-          const renderedLead = renderMarkdown(msg.content, citations);
+            let metadata = (typeof msg.evidence_metadata === 'object' && msg.evidence_metadata !== null) ? msg.evidence_metadata : {};
+            let relatedHtml = '';
+            if (Array.isArray(metadata.related_components) && metadata.related_components.length > 0) {
+              relatedHtml = `
+                <div style="margin-top:14px;">
+                  <h3 style="font-size:11.5px; margin:0 0 6px;">Related components</h3>
+                  <div class="related-grid">
+                    ${metadata.related_components.map(c => `
+                      <a href="/code_viewer?repo=${activeRepo ? activeRepo.id : ''}&file=${encodeURIComponent(c.file_path || '')}" style="text-decoration:none;">
+                        <button type="button">
+                          <span class="type-icon ${c.type === 'class' ? 'middleware' : 'service'}">${c.type ? c.type[0].toUpperCase() : 'C'}</span>
+                          <span>
+                            <strong>${escapeHtml(c.name)}</strong>
+                            <small>${escapeHtml(c.file_path || 'Repository component')}</small>
+                          </span>
+                          <span class="badge ${c.impact_level === 'DIRECT' ? 'badge-danger' : 'badge-warning'}">${c.impact_level || 'DIRECT'}</span>
+                        </button>
+                      </a>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }
 
-          const asstHtml = `
-            <div class="ai-message ${isFailed ? 'ai-failed' : ''}">
-              <div class="ai-message-head">
-                <span class="ai-orb">
-                  <svg class="icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z"/><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z"/></svg>
-                </span>
-                <div class="ai-title-wrap">
-                  <strong class="brand-title">CodeMind</strong>
-                  ${citationsBadge}
+            let riskHtml = '';
+            if (metadata.risk_callout && metadata.risk_callout.summary) {
+              riskHtml = `
+                <div class="risk-callout">
+                  <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 3v4M21 12h-4M12 21v-4M3 12h4"/></svg>
+                  <div>
+                    <strong>Potential impact</strong>
+                    <p>${escapeHtml(metadata.risk_callout.summary)}</p>
+                    <a href="/impact_analysis" style="text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:700; font-size:8.5px; color:#92400e;">
+                      Analyze change impact →
+                    </a>
+                  </div>
+                </div>
+              `;
+            }
+
+            let factsHtml = '';
+            if (metadata.facts) {
+              factsHtml = `
+                <div class="facts">
+                  <span><i class="fact-dot confirmed"></i>Confirmed facts <b>${metadata.facts.confirmed || 0}</b></span>
+                  <span><i class="fact-dot inference"></i>Inferences <b>${metadata.facts.inferences || 0}</b></span>
+                  <span><i class="fact-dot unknown"></i>Unknowns <b>${metadata.facts.unknowns || 0}</b></span>
+                </div>
+              `;
+            }
+
+            let retryHtml = '';
+            if (isFailed || isCancelled) {
+              retryHtml = `
+                <div style="margin-top:10px;">
+                  <button type="button" class="btn btn-secondary btn-sm retry-msg-btn">
+                    <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    <span>${isCancelled ? 'Retry question' : 'Retry response'}</span>
+                  </button>
+                </div>
+              `;
+            }
+
+            let renderedLead = renderMarkdown(msg.content || '', citations);
+            if (isCancelled && !renderedLead.includes('Generation stopped') && !renderedLead.includes('Response cancelled')) {
+              renderedLead += `
+                <div class="generation-stopped-notice" style="margin-top:10px; display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-muted); padding:4px 8px; background:var(--surface-subtle); border-radius:4px; border:1px solid var(--border);">
+                  <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" focusable="false"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+                  <span>Response cancelled</span>
+                </div>
+              `;
+            }
+
+            const asstHtml = `
+              <div class="ai-message ${isFailed ? 'ai-failed' : ''}">
+                <div class="ai-message-head">
+                  <span class="ai-orb">
+                    <svg class="icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z"/><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z"/></svg>
+                  </span>
+                  <div class="ai-title-wrap">
+                    <strong class="brand-title">CodeMind</strong>
+                    ${citationsBadge}
+                  </div>
+                </div>
+                <div class="answer">
+                  <div class="answer-lead markdown-body">${renderedLead}</div>
+                  ${relatedHtml}
+                  ${riskHtml}
+                  ${factsHtml}
+                  <div class="msg-actions">
+                    <button type="button" class="msg-action-btn copy-answer-btn" title="Copy response to clipboard" aria-label="Copy response to clipboard">
+                      <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span class="btn-label">Copy</span>
+                    </button>
+                    <button type="button" class="msg-action-btn feedback-good-btn" title="Helpful response">
+                      <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                    </button>
+                    <button type="button" class="msg-action-btn feedback-bad-btn" title="Not helpful">
+                      <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/></svg>
+                    </button>
+                  </div>
+                  ${retryHtml}
                 </div>
               </div>
-              <div class="answer">
-                <div class="answer-lead markdown-body">${renderedLead}</div>
-                ${relatedHtml}
-                ${riskHtml}
-                ${factsHtml}
-                <div class="msg-actions">
-                  <button type="button" class="msg-action-btn copy-answer-btn" title="Copy response to clipboard" aria-label="Copy response to clipboard">
-                    <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span class="btn-label">Copy</span>
-                  </button>
-                  <button type="button" class="msg-action-btn feedback-good-btn" title="Helpful response">
-                    <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
-                  </button>
-                  <button type="button" class="msg-action-btn feedback-bad-btn" title="Not helpful">
-                    <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/></svg>
-                  </button>
-                </div>
-                ${retryHtml}
-              </div>
-            </div>
-          `;
-          messagesContainer.insertAdjacentHTML('beforeend', asstHtml);
+            `;
+            messagesContainer.insertAdjacentHTML('beforeend', asstHtml);
+          }
+        } catch (msgErr) {
+          console.warn('[CodeMind] Error rendering message in conversation:', msgErr);
         }
       });
 
@@ -2909,23 +4337,32 @@ async function hydrateAssistantView() {
       // Update URL query state
       const url = new URL(window.location);
       url.searchParams.set('conversation_id', convId);
+      if (conv.repository_id) {
+        url.searchParams.set('repo', conv.repository_id);
+      }
       window.history.pushState({}, '', url);
 
     } catch (err) {
+      if (err.name === 'AbortError' || currentHistoryAbortController?.signal?.aborted) {
+        return; // Stale request cancelled by newer conversation switch
+      }
       if (activeLoadingConvId !== convId) return;
       messagesContainer.innerHTML = `
-        <div class="assistant-error">
+        <div class="assistant-error" role="alert">
           <svg class="icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
-          <h2>Unable to open conversation</h2>
+          <h2>Unable to load conversation</h2>
           <p>${escapeHtml(err.message || 'Conversation could not be loaded.')}</p>
-          <div>
-            <button type="button" class="btn btn-secondary" onclick="window.location.reload()">Reload</button>
+          <div style="display:flex; justify-content:center; gap:8px; margin-top:14px;">
+            <button type="button" class="btn btn-secondary" id="retry-load-conv-btn">
+              <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              <span>Retry</span>
+            </button>
             <button type="button" class="btn btn-primary" id="error-new-conv">Start new conversation</button>
           </div>
         </div>
       `;
-      const errNewBtn = document.getElementById('error-new-conv');
-      if (errNewBtn) errNewBtn.addEventListener('click', startNewConversation);
+      document.getElementById('retry-load-conv-btn')?.addEventListener('click', () => openConversation(convId));
+      document.getElementById('error-new-conv')?.addEventListener('click', startNewConversation);
     }
   }
 
@@ -2935,6 +4372,10 @@ async function hydrateAssistantView() {
       currentStreamAbortController.abort();
       currentStreamAbortController = null;
     }
+    if (currentHistoryAbortController) {
+      currentHistoryAbortController.abort();
+      currentHistoryAbortController = null;
+    }
     isSending = false;
     currentConversationId = null;
     sessionStorage.removeItem('codemind_active_conversation_id');
@@ -2942,13 +4383,18 @@ async function hydrateAssistantView() {
     if (titleEl) titleEl.textContent = 'AI Code Assistant';
     updateHeaderContext(activeRepo ? activeRepo.name : null, activeRepo ? activeRepo.default_branch : 'main');
 
-    messagesContainer.innerHTML = '';
-    const emptyPrompt = document.getElementById('assistant-empty-prompt');
-    if (emptyPrompt) {
-      messagesContainer.appendChild(emptyPrompt);
-      emptyPrompt.style.display = 'block';
+    // Reset composer state
+    let stopBtn = document.getElementById('stop-generating-btn');
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (sendBtn) sendBtn.style.display = 'grid';
+    if (textarea) {
+      textarea.disabled = false;
+      textarea.value = '';
+      autoResizeTextarea();
+      textarea.focus();
     }
 
+    // Reset evidence panel
     populateEvidencePanel([], activeRepo);
 
     // Unselect sidebar items
@@ -2956,7 +4402,21 @@ async function hydrateAssistantView() {
       historyListEl.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
     }
 
-    // Clean URL
+    // Restore empty prompt
+    if (messagesContainer) {
+      messagesContainer.innerHTML = initialEmptyPromptHtml;
+      messagesContainer.querySelectorAll('.suggestion-prompt-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const text = btn.querySelector('span')?.textContent?.trim();
+          if (text && textarea) {
+            textarea.value = text;
+            autoResizeTextarea();
+            handleSend(text);
+          }
+        });
+      });
+    }
+
     const url = new URL(window.location);
     url.searchParams.delete('conversation_id');
     window.history.pushState({}, '', url);
@@ -3121,21 +4581,32 @@ async function hydrateAssistantView() {
       });
     }
 
-    // Create streaming AI message container
+    // Create streaming AI message container with immediate thinking placeholder
     const aiMsgId = 'ai-stream-' + Date.now();
     const aiMsgHtml = `
       <div class="ai-message" id="${aiMsgId}">
         <div class="ai-message-head">
-          <span class="ai-orb">
+          <span class="ai-orb pulsing">
             <svg class="icon animate-spin" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
           </span>
           <div class="ai-title-wrap">
             <strong class="brand-title">CodeMind</strong>
-            <span class="badge badge-neutral stream-status-badge"><span class="badge-text">Retrieving evidence & reasoning...</span></span>
+            <span class="badge badge-neutral stream-status-badge"><span class="badge-text">Searching your codebase...</span></span>
           </div>
         </div>
         <div class="answer">
-          <div class="answer-lead markdown-body live-token-body"></div>
+          <div class="assistant-thinking-state" id="${aiMsgId}-thinking" role="status" aria-live="polite">
+            <div class="thinking-header">
+              <div class="thinking-spinner">
+                <span class="thinking-dot"></span>
+                <span class="thinking-dot"></span>
+                <span class="thinking-dot"></span>
+              </div>
+              <span class="thinking-label">Searching your codebase...</span>
+            </div>
+            <div class="thinking-shimmer-bar"></div>
+          </div>
+          <div class="answer-lead markdown-body live-token-body" style="display:none;"></div>
           <div class="related-container"></div>
           <div class="risk-container"></div>
           <div class="facts" style="display:none;"></div>
@@ -3150,8 +4621,25 @@ async function hydrateAssistantView() {
 
     const aiMsgEl = document.getElementById(aiMsgId);
     const liveTokenBody = aiMsgEl ? aiMsgEl.querySelector('.live-token-body') : null;
+    const thinkingEl = aiMsgEl ? aiMsgEl.querySelector('.assistant-thinking-state') : null;
+    const thinkingLabel = thinkingEl ? thinkingEl.querySelector('.thinking-label') : null;
     const statusBadge = aiMsgEl ? aiMsgEl.querySelector('.stream-status-badge') : null;
-    const statusBadgeText = statusBadge ? statusBadge.querySelector('.badge-text') : null;
+
+    function resetComposerState() {
+      isSending = false;
+      currentStreamAbortController = null;
+      window.currentStreamAbortController = null;
+      const curStopBtn = document.getElementById('stop-generating-btn');
+      if (curStopBtn) curStopBtn.style.display = 'none';
+      if (sendBtn) {
+        sendBtn.style.display = 'grid';
+        sendBtn.disabled = !textarea?.value?.trim();
+      }
+      if (textarea) {
+        textarea.disabled = false;
+        textarea.focus();
+      }
+    }
 
     // Show stop button in composer and hide send button
     let stopBtn = document.getElementById('stop-generating-btn');
@@ -3171,8 +4659,9 @@ async function hydrateAssistantView() {
         e.preventDefault();
         e.stopPropagation();
         if (currentStreamAbortController) {
-          currentStreamAbortController.abort();
+          try { currentStreamAbortController.abort(); } catch (_) {}
         }
+        resetComposerState();
       };
     }
     if (sendBtn) sendBtn.style.display = 'none';
@@ -3191,7 +4680,7 @@ async function hydrateAssistantView() {
         }
 
         if (event === 'meta') {
-          if (data.conversation_id && !currentConversationId) {
+          if (data && data.conversation_id && !currentConversationId) {
             currentConversationId = data.conversation_id;
             requestConvId = currentConversationId;
             sessionStorage.setItem('codemind_active_conversation_id', String(currentConversationId));
@@ -3200,20 +4689,35 @@ async function hydrateAssistantView() {
             window.history.pushState({}, '', url);
           }
         } else if (event === 'status') {
-          if (statusBadgeText) {
-            statusBadgeText.textContent = data.message || 'Thinking...';
+          const msg = (data && data.message) || 'Thinking through the code...';
+          if (thinkingLabel) {
+            thinkingLabel.textContent = msg;
+          }
+          if (statusBadge && !statusBadge.classList.contains('badge-success')) {
+            const badgeTextEl = statusBadge.querySelector('.badge-text');
+            if (badgeTextEl) badgeTextEl.textContent = msg;
           }
         } else if (event === 'citation') {
-          if (Array.isArray(data.citations) && data.citations.length > 0) {
+          if (data && Array.isArray(data.citations) && data.citations.length > 0) {
             streamCitations = data.citations;
             populateEvidencePanel(streamCitations, activeRepo);
             if (statusBadge) {
               statusBadge.className = 'badge badge-success stream-status-badge';
               statusBadge.innerHTML = `<svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg> <span class="badge-text">${streamCitations.length} sources verified</span>`;
             }
+            if (thinkingLabel) {
+              thinkingLabel.textContent = 'Thinking through verified code...';
+            }
           }
         } else if (event === 'token') {
-          accumulatedTokens += data.token || '';
+          // Hide thinking state immediately when first token arrives
+          if (thinkingEl && thinkingEl.style.display !== 'none') {
+            thinkingEl.style.display = 'none';
+          }
+          if (liveTokenBody && liveTokenBody.style.display === 'none') {
+            liveTokenBody.style.display = 'block';
+          }
+          accumulatedTokens += (data && data.token) || '';
           if (liveTokenBody) {
             liveTokenBody.innerHTML = renderMarkdown(accumulatedTokens, streamCitations);
           }
@@ -3224,8 +4728,10 @@ async function hydrateAssistantView() {
             messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'smooth' });
           }
         } else if (event === 'done') {
-          const finalAnswer = data.answer || accumulatedTokens;
-          const finalCitations = data.citations || streamCitations;
+          if (thinkingEl) thinkingEl.style.display = 'none';
+          if (liveTokenBody) liveTokenBody.style.display = 'block';
+          const finalAnswer = (data && data.answer) || accumulatedTokens;
+          const finalCitations = (data && data.citations) || streamCitations;
           if (liveTokenBody) {
             liveTokenBody.innerHTML = renderMarkdown(finalAnswer, finalCitations);
           }
@@ -3233,6 +4739,7 @@ async function hydrateAssistantView() {
           // Convert orb back to normal
           const orb = aiMsgEl ? aiMsgEl.querySelector('.ai-orb') : null;
           if (orb) {
+            orb.classList.remove('pulsing');
             orb.innerHTML = `<svg class="icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z"/><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z"/></svg>`;
           }
 
@@ -3249,7 +4756,7 @@ async function hydrateAssistantView() {
 
           // Render facts
           const factsEl = aiMsgEl ? aiMsgEl.querySelector('.facts') : null;
-          if (factsEl) {
+          if (factsEl && data && data.facts) {
             factsEl.style.display = 'flex';
             factsEl.innerHTML = `
               <span><i class="fact-dot confirmed"></i>Confirmed facts <b>${data.facts?.confirmed || 0}</b></span>
@@ -3259,7 +4766,7 @@ async function hydrateAssistantView() {
           }
 
           // Related components
-          if (data.related_components && data.related_components.length > 0) {
+          if (data && data.related_components && data.related_components.length > 0) {
             const relContainer = aiMsgEl ? aiMsgEl.querySelector('.related-container') : null;
             if (relContainer) {
               relContainer.innerHTML = `
@@ -3267,7 +4774,7 @@ async function hydrateAssistantView() {
                   <h3 style="font-size:11.5px; margin:0 0 6px;">Related components</h3>
                   <div class="related-grid">
                     ${data.related_components.map(c => `
-                      <a href="/code_viewer?file=${encodeURIComponent(c.file_path || '')}" style="text-decoration:none;">
+                      <a href="/code_viewer?repo=${activeRepo ? activeRepo.id : ''}&file=${encodeURIComponent(c.file_path || '')}" style="text-decoration:none;">
                         <button type="button">
                           <span class="type-icon ${c.type === 'class' ? 'middleware' : 'service'}">${c.type ? c.type[0].toUpperCase() : 'C'}</span>
                           <span>
@@ -3285,7 +4792,7 @@ async function hydrateAssistantView() {
           }
 
           // Risk callout
-          if (data.risk_callout && data.risk_callout.summary) {
+          if (data && data.risk_callout && data.risk_callout.summary) {
             const riskContainer = aiMsgEl ? aiMsgEl.querySelector('.risk-container') : null;
             if (riskContainer) {
               riskContainer.innerHTML = `
@@ -3334,6 +4841,8 @@ async function hydrateAssistantView() {
             }
           }
         } else if (event === 'error') {
+          if (thinkingEl) thinkingEl.style.display = 'none';
+          if (liveTokenBody) liveTokenBody.style.display = 'block';
           if (aiMsgEl) aiMsgEl.classList.add('ai-failed');
           if (statusBadge) {
             statusBadge.className = 'badge badge-danger';
@@ -3341,14 +4850,18 @@ async function hydrateAssistantView() {
           }
           if (liveTokenBody) {
             liveTokenBody.innerHTML = `
-              <p style="color:var(--status-danger);"><strong>Error querying assistant:</strong> ${escapeHtml(data.message || 'Server error')}</p>
-              <div style="margin-top:8px;">
+              <p style="color:var(--status-danger);"><strong>Error querying assistant:</strong> ${escapeHtml(data.message || data.detail || 'Server error occurred during generation.')}</p>
+              <div style="margin-top:10px;">
                 <button type="button" class="btn btn-secondary btn-sm retry-btn-action">
                   <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                   <span>Retry</span>
                 </button>
               </div>
             `;
+            liveTokenBody.querySelector('.retry-btn-action')?.addEventListener('click', () => {
+              aiMsgEl.remove();
+              handleSend(q);
+            });
           }
         }
       };
@@ -3378,33 +4891,38 @@ async function hydrateAssistantView() {
 
     } catch (err) {
       const isAborted = (err && (err.name === 'AbortError' || err.message?.includes('aborted'))) || (currentStreamAbortController && currentStreamAbortController.signal.aborted);
+      if (thinkingEl) thinkingEl.style.display = 'none';
+      if (liveTokenBody) liveTokenBody.style.display = 'block';
+
       if (isAborted) {
-        // User cancelled or switched conversation - NEVER show an error banner
+        // User cancelled or switched conversation - show clear "Response cancelled" state
         if (aiMsgEl && document.body.contains(aiMsgEl)) {
           const orb = aiMsgEl.querySelector('.ai-orb');
           if (orb) {
+            orb.classList.remove('pulsing');
             orb.innerHTML = `<svg class="icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z"/></svg>`;
           }
           if (statusBadge) {
             statusBadge.className = 'badge badge-neutral stream-status-badge';
-            statusBadge.innerHTML = `<span class="badge-text">Generation stopped</span>`;
+            statusBadge.innerHTML = `<span class="badge-text">Response cancelled</span>`;
           }
+          const cancelledHtml = `
+            <div class="generation-stopped-notice" style="margin-top:10px; display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); padding:6px 10px; background:var(--surface-subtle); border-radius:6px; border:1px solid var(--border);">
+              <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" focusable="false"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+              <span>Response cancelled</span>
+              <button type="button" class="btn btn-secondary btn-sm retry-cancelled-btn" style="margin-left:6px; padding:2px 8px; font-size:11px;">Retry</button>
+            </div>
+          `;
           if (liveTokenBody) {
             if (accumulatedTokens && accumulatedTokens.trim()) {
-              liveTokenBody.innerHTML = renderMarkdown(accumulatedTokens, streamCitations) + `
-                <div class="generation-stopped-notice" style="margin-top:10px; display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-muted); padding:4px 8px; background:var(--surface-subtle); border-radius:4px; border:1px solid var(--border);">
-                  <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" focusable="false"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
-                  <span>Generation stopped</span>
-                </div>
-              `;
+              liveTokenBody.innerHTML = renderMarkdown(accumulatedTokens, streamCitations) + cancelledHtml;
             } else {
-              liveTokenBody.innerHTML = `
-                <div class="generation-stopped-notice" style="display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-muted); padding:4px 8px; background:var(--surface-subtle); border-radius:4px; border:1px solid var(--border);">
-                  <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" focusable="false"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
-                  <span>Generation stopped</span>
-                </div>
-              `;
+              liveTokenBody.innerHTML = cancelledHtml;
             }
+            liveTokenBody.querySelector('.retry-cancelled-btn')?.addEventListener('click', () => {
+              aiMsgEl.remove();
+              handleSend(q);
+            });
           }
         }
         return;
@@ -3415,32 +4933,35 @@ async function hydrateAssistantView() {
       }
 
       if (aiMsgEl) aiMsgEl.classList.add('ai-failed');
+      if (statusBadge) {
+        statusBadge.className = 'badge badge-danger';
+        statusBadge.innerHTML = `<span class="badge-text">Generation Error</span>`;
+      }
       if (liveTokenBody) {
         liveTokenBody.innerHTML = `
-          <p style="color:var(--status-danger);"><strong>Error querying assistant:</strong> ${escapeHtml(err.message || 'Server error')}</p>
-          <div style="margin-top:8px;">
-            <button type="button" class="btn btn-secondary btn-sm retry-btn-action">
+          <p style="color:var(--status-danger);"><strong>Error querying assistant:</strong> ${escapeHtml(err.message || 'Server error occurred during streaming.')}</p>
+          <div style="margin-top:10px;">
+            <button type="button" class="btn btn-secondary btn-sm retry-stream-err-btn">
               <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
               <span>Retry</span>
             </button>
           </div>
         `;
+        liveTokenBody.querySelector('.retry-stream-err-btn')?.addEventListener('click', () => {
+          aiMsgEl.remove();
+          handleSend(q);
+        });
       }
     } finally {
-      isSending = false;
-      currentStreamAbortController = null;
-      window.currentStreamAbortController = null;
-      if (stopBtn) stopBtn.style.display = 'none';
-      if (sendBtn) {
-        sendBtn.style.display = 'grid';
-        sendBtn.disabled = !textarea?.value?.trim();
-      }
-      if (textarea) {
-        textarea.disabled = false;
-        textarea.focus();
-      }
+      resetComposerState();
     }
   }
+
+  // Backward-compatible alias for any code or buttons calling submitQuestion
+  function submitQuestion(text) {
+    return handleSend(text);
+  }
+  window.submitQuestion = submitQuestion;
 
   // Handle delegated message actions & retry
   if (messagesContainer) {
@@ -3647,8 +5168,11 @@ async function hydrateAssistantView() {
     const storedConvId = sessionStorage.getItem('codemind_active_conversation_id');
     if (storedConvId) {
       const parsedStored = parseInt(storedConvId);
-      if (!isNaN(parsedStored) && conversationsCache.some(c => c.id === parsedStored)) {
+      const cached = conversationsCache.find(c => c.id === parsedStored);
+      if (cached && (!activeRepo || !cached.repository_id || cached.repository_id === activeRepo.id)) {
         openConversation(parsedStored);
+      } else {
+        sessionStorage.removeItem('codemind_active_conversation_id');
       }
     }
   }
@@ -4940,6 +6464,9 @@ async function hydrateCodeViewerView() {
 
           // Update URL without full page reload
           const newUrl = new URL(window.location.href);
+          if (activeRepo && activeRepo.id) {
+            newUrl.searchParams.set('repo', activeRepo.id);
+          }
           newUrl.searchParams.set('file', filePath);
           newUrl.searchParams.delete('start');
           newUrl.searchParams.delete('end');
@@ -5507,8 +7034,9 @@ async function hydrateGlobalTopbar(activeRepo) {
       resultsContainer.innerHTML = currentResults.map((sym, idx) => {
         const isSelected = idx === selectedIndex;
         const kindLower = (sym.symbol_type || 'symbol').toLowerCase();
+        const rId = sym.repository_id || (activeRepo ? activeRepo.id : '');
         return `
-          <a class="cm-palette-item ${isSelected ? 'selected' : ''}" data-index="${idx}" href="/code_viewer?file=${encodeURIComponent(sym.file_path)}&start=${sym.start_line}&end=${sym.end_line}">
+          <a class="cm-palette-item ${isSelected ? 'selected' : ''}" data-index="${idx}" href="/code_viewer?repo=${rId}&file=${encodeURIComponent(sym.file_path)}&start=${sym.start_line}&end=${sym.end_line}">
             <div class="cm-palette-item-head">
               <div class="cm-palette-item-title-wrap">
                 <span class="cm-palette-kind-badge ${kindLower}">${escapeHtml(sym.symbol_type || 'symbol')}</span>
@@ -5528,7 +7056,8 @@ async function hydrateGlobalTopbar(activeRepo) {
           const idx = parseInt(el.getAttribute('data-index'));
           const item = currentResults[idx];
           if (item) {
-            window.location.href = `/code_viewer?file=${encodeURIComponent(item.file_path)}&start=${item.start_line}&end=${item.end_line}`;
+            const rId = item.repository_id || (activeRepo ? activeRepo.id : '');
+            window.location.href = `/code_viewer?repo=${rId}&file=${encodeURIComponent(item.file_path)}&start=${item.start_line}&end=${item.end_line}`;
           }
         });
       });
@@ -5599,7 +7128,8 @@ async function hydrateGlobalTopbar(activeRepo) {
         e.preventDefault();
         if (selectedIndex >= 0 && currentResults[selectedIndex]) {
           const item = currentResults[selectedIndex];
-          window.location.href = `/code_viewer?file=${encodeURIComponent(item.file_path)}&start=${item.start_line}&end=${item.end_line}`;
+          const rId = item.repository_id || (activeRepo ? activeRepo.id : '');
+          window.location.href = `/code_viewer?repo=${rId}&file=${encodeURIComponent(item.file_path)}&start=${item.start_line}&end=${item.end_line}`;
         }
       }
     });
@@ -5829,7 +7359,7 @@ async function hydrateGitHistoryView() {
       let explanationHtml = '';
       if (detail.ai_explanation) {
         const citationsHtml = (detail.ai_explanation.sources || []).map(s => `
-          <button class="citation" onclick="window.location.href='/code_viewer?file=${encodeURIComponent(s.file_path || '')}'">
+          <button class="citation" onclick="window.location.href='/code_viewer?repo=${activeRepo ? activeRepo.id : ''}&file=${encodeURIComponent(s.file_path || '')}'">
             <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M6 2h8l4 4v16H6Z"/><path d="M14 2v5h5"/></svg>
             ${escapeHtml(s.label || s.file_path)}
           </button>
@@ -5982,22 +7512,31 @@ async function hydrateSecurityInsightsView() {
     return;
   }
 
+  // Update topbar repo and branch display
+  const topbarRepo = document.querySelector('.repo-selector strong');
+  const topbarBranch = document.getElementById('topbar-branch-text');
+  if (topbarRepo) topbarRepo.textContent = activeRepo.name;
+  if (topbarBranch) topbarBranch.textContent = activeRepo.default_branch || 'main';
+
+  const activeBranch = activeRepo.default_branch || 'main';
   let allFindings = [];
   let selectedFindingId = null;
   let severityFilter = 'ALL';
+  let latestSummary = null;
 
-  async function loadFindings() {
-    if (findingsContainer) {
+  async function loadFindings(summaryOverride = null) {
+    if (!summaryOverride && findingsContainer) {
       findingsContainer.innerHTML = `
         <div class="list-empty">
           <strong>Scanning security findings...</strong>
-          <p>Querying verified static security analysis.</p>
+          <p>Querying verified static security analysis for ${escapeHtml(activeRepo.name)}.</p>
         </div>
       `;
     }
 
     try {
-      const summary = await CodeMindAPI.getSecurityFindings(activeRepo.id);
+      const summary = summaryOverride || await CodeMindAPI.getSecurityFindings(activeRepo.id, activeBranch);
+      latestSummary = summary;
       if (highCountEl) highCountEl.textContent = summary.high_count ?? summary.high_severity ?? 0;
       if (medCountEl) medCountEl.textContent = summary.medium_count ?? summary.medium_severity ?? 0;
       if (reviewedCountEl) reviewedCountEl.textContent = summary.reviewed_count ?? summary.reviewed ?? 0;
@@ -6010,9 +7549,17 @@ async function hydrateSecurityInsightsView() {
         renderFindingDetail(allFindings[0]);
       } else {
         if (detailContainer) {
+          let emptyDetailMsg = 'Scan completed: No security findings detected for this repository.';
+          if (summary.status === 'indexing_in_progress') {
+            emptyDetailMsg = 'Repository indexing is currently in progress. Complete results will be displayed once indexing finishes.';
+          } else if (summary.total_files === 0) {
+            emptyDetailMsg = 'Repository has not been indexed yet. Please index the repository to run security analysis.';
+          } else if (summary.files_scanned === 0) {
+            emptyDetailMsg = 'No supported source code files detected for security analysis.';
+          }
           detailContainer.innerHTML = `
             <div style="padding: 36px; text-align: center; color: var(--muted); font-size: 11px;">
-              No security findings detected for this repository.
+              ${escapeHtml(emptyDetailMsg)}
             </div>
           `;
         }
@@ -6032,6 +7579,61 @@ async function hydrateSecurityInsightsView() {
 
   function renderFindingsList() {
     if (!findingsContainer) return;
+
+    // Handle distinct repository states when findings list is empty
+    if (allFindings.length === 0) {
+      if (latestSummary && latestSummary.status === 'indexing_in_progress') {
+        findingsContainer.innerHTML = `
+          <div class="list-empty" style="padding: 32px 16px;">
+            <svg class="icon animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/>
+            </svg>
+            <strong>Repository indexing in progress</strong>
+            <p>${escapeHtml(latestSummary.message || 'Indexing is in progress. Findings will update automatically once indexing completes.')}</p>
+          </div>
+        `;
+        return;
+      }
+
+      if (latestSummary && latestSummary.total_files === 0) {
+        findingsContainer.innerHTML = `
+          <div class="list-empty" style="padding: 32px 16px;">
+            <svg class="icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>
+            </svg>
+            <strong>Repository not indexed</strong>
+            <p>${escapeHtml(latestSummary.message || 'No source files have been indexed for this repository yet.')}</p>
+            <a href="/repositories" class="btn btn-primary" style="margin-top: 12px;">Go to Repositories</a>
+          </div>
+        `;
+        return;
+      }
+
+      if (latestSummary && latestSummary.files_scanned === 0 && latestSummary.total_files > 0) {
+        findingsContainer.innerHTML = `
+          <div class="list-empty" style="padding: 32px 16px;">
+            <svg class="icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+            </svg>
+            <strong>No supported source files</strong>
+            <p>${escapeHtml(latestSummary.message || 'No supported source code files detected in this repository.')}</p>
+          </div>
+        `;
+        return;
+      }
+
+      findingsContainer.innerHTML = `
+        <div class="list-empty" style="padding: 32px 16px;">
+          <svg class="icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>
+          </svg>
+          <strong>Scan completed: 0 findings</strong>
+          <p>${escapeHtml((latestSummary && latestSummary.message) ? latestSummary.message : 'Static security analysis completed successfully with zero security findings detected.')}</p>
+        </div>
+      `;
+      return;
+    }
+
     const filtered = severityFilter === 'ALL' 
       ? allFindings 
       : allFindings.filter(f => f.severity.toUpperCase() === severityFilter);
@@ -6039,14 +7641,24 @@ async function hydrateSecurityInsightsView() {
     if (filtered.length === 0) {
       findingsContainer.innerHTML = `
         <div class="list-empty">
-          <strong>No open findings</strong>
+          <strong>No matching findings</strong>
           <p>No security findings match the active severity filter (${escapeHtml(severityFilter)}).</p>
         </div>
       `;
       return;
     }
 
-    findingsContainer.innerHTML = filtered.map((f, idx) => {
+    let warningBanner = '';
+    if (latestSummary && latestSummary.status === 'indexing_in_progress') {
+      warningBanner = `
+        <div style="padding: 10px 14px; margin-bottom: 12px; border-radius: 6px; background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.3); font-size: 11px; color: #eab308; display: flex; align-items: center; gap: 8px;">
+          <span>⚠️</span>
+          <span><strong>Indexing in progress:</strong> Partial results shown. Codebase security cannot be certified until indexing finishes.</span>
+        </div>
+      `;
+    }
+
+    const rowsHtml = filtered.map((f, idx) => {
       const isSelected = f.id === selectedFindingId;
       const isHigh = f.severity.toUpperCase() === 'HIGH' || f.severity.toUpperCase() === 'CRITICAL';
       const badgeClass = isHigh ? 'badge-danger' : 'badge-warning';
@@ -6064,6 +7676,8 @@ async function hydrateSecurityInsightsView() {
         </button>
       `;
     }).join('');
+
+    findingsContainer.innerHTML = warningBanner + rowsHtml;
 
     findingsContainer.querySelectorAll('.finding-row').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -6123,7 +7737,7 @@ async function hydrateSecurityInsightsView() {
         <h2>${escapeHtml(f.title)}</h2>
         <span class="citation">
           <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M6 2h8l4 4v16H6Z"/><path d="M14 2v5h5"/></svg>
-          <a href="/code_viewer?file=${encodeURIComponent(f.file_path)}&start=${f.line_number || 1}&end=${(f.line_number || 1) + 2}" style="color: inherit; text-decoration: none;">
+          <a href="/code_viewer?repo=${activeRepo ? activeRepo.id : ''}&file=${encodeURIComponent(f.file_path)}&start=${f.line_number || 1}&end=${(f.line_number || 1) + 2}" style="color: inherit; text-decoration: none;">
             ${escapeHtml(f.file_path)}:${f.line_number || 1}
           </a>
         </span>
@@ -6187,8 +7801,8 @@ async function hydrateSecurityInsightsView() {
         <span>Scanning repository...</span>
       `;
       try {
-        await CodeMindAPI.runSecurityScan(activeRepo.id);
-        await loadFindings();
+        const summary = await CodeMindAPI.runSecurityScan(activeRepo.id, activeBranch);
+        await loadFindings(summary);
         await updateSecuritySidebarBadge(activeRepo.id);
       } catch (err) {
         alert(`Scan failed: ${err.message}`);
@@ -6262,7 +7876,7 @@ async function hydrateDocsView() {
       }
 
       modulesContainer.innerHTML = filtered.map(m => `
-        <button class="support-row" onclick="window.location.href='/code_viewer?file=${encodeURIComponent(m.file_path)}'">
+        <button class="support-row" onclick="window.location.href='/code_viewer?repo=${activeRepo ? activeRepo.id : ''}&file=${encodeURIComponent(m.file_path)}'">
           <span class="support-icon">
             <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M6 2h8l4 4v16H6Z"/><path d="M14 2v5h5"/></svg>
           </span>
@@ -6398,6 +8012,49 @@ async function hydrateSettingsView() {
               <span id="settings-status-msg" style="font-size: 11.5px; color: var(--status-success, #10b981); display: none; font-weight: 500;">✓ Profile saved successfully!</span>
             </div>
           </form>
+
+          <!-- Section: Session & Security -->
+          <div class="session-security-card" style="max-width: 680px; margin-top: 24px;">
+            <div class="session-security-header">
+              <div>
+                <h3 class="session-security-title">Session & Security</h3>
+                <p class="session-security-subtitle">Configure session lifetime and automatic inactivity logout</p>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+              <div>
+                <label for="setting-session-timeout" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Automatic logout after</label>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                  <select id="setting-session-timeout" style="height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: #ffffff; color: var(--text); min-width: 180px;">
+                    <option value="30" ${(user.session_timeout_minutes || 30) === 30 ? 'selected' : ''}>30 minutes</option>
+                    <option value="60" ${(user.session_timeout_minutes) === 60 ? 'selected' : ''}>1 hour</option>
+                    <option value="240" ${(user.session_timeout_minutes) === 240 ? 'selected' : ''}>4 hours</option>
+                    <option value="480" ${(user.session_timeout_minutes) === 480 ? 'selected' : ''}>8 hours</option>
+                  </select>
+                  <button type="button" class="btn btn-primary" id="save-session-timeout-btn" style="min-width: 120px;">Save Changes</button>
+                  <span id="session-timeout-status-msg" style="font-size: 11.5px; color: var(--status-success, #10b981); display: none; font-weight: 500;">✓ Timeout preference saved!</span>
+                </div>
+                <small style="color: var(--muted); font-size: 10px; margin-top: 6px; display: block;">Default is 30 minutes. Absolute session lifetime is enforced securely by the server.</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Active Sessions -->
+          <div class="session-security-card" style="max-width: 680px; margin-top: 24px;">
+            <div class="session-security-header">
+              <div>
+                <h3 class="session-security-title">Active Sessions</h3>
+                <p class="session-security-subtitle">Persistent session tracking across devices, browsers, and IP addresses</p>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-revoke-other-sessions" style="display: inline-flex; align-items: center; gap: 5px;">
+                <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                <span>Revoke other sessions</span>
+              </button>
+            </div>
+            <div id="active-sessions-list-container" class="session-cards-list">
+              <div style="padding: 16px; text-align: center; color: var(--muted); font-size: 11px;">Loading sessions...</div>
+            </div>
+          </div>
         `;
 
         const linkSwitch = document.getElementById('link-switch-to-ai');
@@ -6447,6 +8104,188 @@ async function hydrateSettingsView() {
             }
           });
         }
+
+        // --- Session Timeout Preference Handler ---
+        const timeoutBtn = document.getElementById('save-session-timeout-btn');
+        const timeoutSelect = document.getElementById('setting-session-timeout');
+        const timeoutStatusMsg = document.getElementById('session-timeout-status-msg');
+
+        if (timeoutBtn && timeoutSelect) {
+          timeoutBtn.addEventListener('click', async () => {
+            const chosen = parseInt(timeoutSelect.value, 10);
+            timeoutBtn.disabled = true;
+            timeoutBtn.innerHTML = `<svg class="icon animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> Saving...`;
+
+            try {
+              const res = await CodeMindAPI.updateSessionTimeout(chosen);
+              user.session_timeout_minutes = res.timeout_minutes;
+              if (timeoutStatusMsg) {
+                timeoutStatusMsg.style.display = 'inline';
+                setTimeout(() => { timeoutStatusMsg.style.display = 'none'; }, 3500);
+              }
+              // Refresh active sessions list to reflect updated expiration
+              await loadActiveSessions();
+            } catch (err) {
+              alert(`Failed to save session timeout: ${err.message}`);
+            } finally {
+              timeoutBtn.disabled = false;
+              timeoutBtn.textContent = 'Save Changes';
+            }
+          });
+        }
+
+        // --- Active Sessions Loader & Action Handlers ---
+        const sessionsContainer = document.getElementById('active-sessions-list-container');
+        const revokeOthersBtn = document.getElementById('btn-revoke-other-sessions');
+
+        async function loadActiveSessions() {
+          if (!sessionsContainer) return;
+          try {
+            const data = await CodeMindAPI.getSessions();
+            const sessions = data.sessions || [];
+
+            if (sessions.length === 0) {
+              sessionsContainer.innerHTML = `
+                <div class="list-empty" style="padding: 24px;">
+                  <strong>No session history found</strong>
+                  <p>Session records will appear here upon login.</p>
+                </div>
+              `;
+              if (revokeOthersBtn) revokeOthersBtn.disabled = true;
+              return;
+            }
+
+            const otherActiveCount = sessions.filter(s => s.status === 'active' && !s.is_current).length;
+            if (revokeOthersBtn) {
+              revokeOthersBtn.disabled = otherActiveCount === 0;
+            }
+
+            sessionsContainer.innerHTML = sessions.map(s => {
+              const isCurrent = Boolean(s.is_current);
+              let statusBadgeHtml = '';
+              if (isCurrent) {
+                statusBadgeHtml = '<span class="session-badge session-badge-current">Active — This device</span>';
+              } else if (s.status === 'active') {
+                statusBadgeHtml = '<span class="session-badge session-badge-active">Active</span>';
+              } else if (s.status === 'expired') {
+                statusBadgeHtml = '<span class="session-badge session-badge-expired">Expired</span>';
+              } else if (s.status === 'logged_out') {
+                statusBadgeHtml = '<span class="session-badge session-badge-revoked">Logged out</span>';
+              } else {
+                statusBadgeHtml = '<span class="session-badge session-badge-revoked">Revoked</span>';
+              }
+
+              let actionHtml = '';
+              if (s.status === 'active') {
+                if (isCurrent) {
+                  actionHtml = `<span style="font-size: 10px; color: var(--primary); font-weight: 600;">Current Device</span>`;
+                } else {
+                  actionHtml = `<button type="button" class="btn btn-secondary btn-sm btn-revoke-session" data-session-id="${s.id}" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);">Revoke session</button>`;
+                }
+              } else {
+                actionHtml = `<span style="font-size: 10px; color: var(--muted);">Ended ${s.logout_at ? formatTimeAgo(s.logout_at) : ''}</span>`;
+              }
+
+              return `
+                <div class="session-card-item ${isCurrent ? 'is-current' : ''}">
+                  <div class="session-card-header">
+                    <div class="session-device-wrap">
+                      <span class="session-device-icon">
+                        <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                      </span>
+                      <div>
+                        <strong class="session-device-title">${escapeHtml(s.device_label || 'Web Device')}</strong>
+                        <div style="font-size: 10px; color: var(--muted); margin-top: 2px;">
+                          ${escapeHtml(s.user_name || '')} (${escapeHtml(s.user_email || '')})
+                        </div>
+                      </div>
+                    </div>
+                    <div class="session-badges-wrap">
+                      ${statusBadgeHtml}
+                      ${actionHtml}
+                    </div>
+                  </div>
+
+                  <div class="session-details-grid">
+                    <div>IP address: <strong>${escapeHtml(s.ip_address || '—')}</strong></div>
+                    <div>Login time: <strong>${formatDateTime(s.login_at)}</strong></div>
+                    <div>Last activity: <strong>${formatDateTime(s.last_activity_at)}</strong></div>
+                    <div>Expires at: <strong>${formatDateTime(s.expires_at)}</strong></div>
+                    <div>Last accessed page: <strong><code>${escapeHtml(s.last_accessed_path || '/dashboard')}</code></strong></div>
+                    <div>Browser: <strong>${escapeHtml(s.browser || '—')}</strong></div>
+                    <div>Operating system: <strong>${escapeHtml(s.os || '—')}</strong></div>
+                    <div>Ended: <strong>${s.logout_at ? formatDateTime(s.logout_at) : '—'}</strong></div>
+                  </div>
+                </div>
+              `;
+            }).join('');
+
+            // Attach event listeners to individual revoke buttons
+            const revokeBtns = sessionsContainer.querySelectorAll('.btn-revoke-session');
+            revokeBtns.forEach(btn => {
+              btn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const sid = btn.dataset.sessionId;
+                if (!sid) return;
+
+                const confirmed = confirm('Are you sure you want to revoke this session? The device will immediately lose access and be signed out.');
+                if (!confirmed) return;
+
+                btn.disabled = true;
+                btn.textContent = 'Revoking...';
+                try {
+                  const res = await CodeMindAPI.revokeSession(sid);
+                  if (res && res.is_current) {
+                    localStorage.removeItem('codemind_auth_token');
+                    sessionStorage.clear();
+                    window.location.href = '/login?expired=true';
+                  } else {
+                    await loadActiveSessions();
+                  }
+                } catch (err) {
+                  alert(`Failed to revoke session: ${err.message}`);
+                  btn.disabled = false;
+                  btn.textContent = 'Revoke session';
+                }
+              });
+            });
+
+          } catch (err) {
+            sessionsContainer.innerHTML = `
+              <div class="list-empty" style="color: var(--status-danger);">
+                <strong>Error loading active sessions</strong>
+                <p>${escapeHtml(err.message || 'Server error')}</p>
+              </div>
+            `;
+          }
+        }
+
+        if (revokeOthersBtn) {
+          revokeOthersBtn.addEventListener('click', async () => {
+            const confirmed = confirm('Are you sure you want to revoke all other active sessions across other devices and browsers?');
+            if (!confirmed) return;
+
+            revokeOthersBtn.disabled = true;
+            revokeOthersBtn.innerHTML = `<svg class="icon animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> Revoking...`;
+
+            try {
+              const res = await CodeMindAPI.revokeOtherSessions();
+              alert(res.message || 'Other active sessions revoked successfully.');
+              await loadActiveSessions();
+            } catch (err) {
+              alert(`Failed to revoke other sessions: ${err.message}`);
+            } finally {
+              revokeOthersBtn.disabled = false;
+              revokeOthersBtn.innerHTML = `
+                <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                <span>Revoke other sessions</span>
+              `;
+            }
+          });
+        }
+
+        // Initial sessions load
+        loadActiveSessions();
 
       } else {
         // AI & Embeddings tab
@@ -6643,6 +8482,24 @@ function formatTimeAgo(isoDate) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function formatDateTime(isoDate) {
+  if (!isoDate) return '—';
+  try {
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return isoDate;
+    return d.toLocaleString(undefined, {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch (e) {
+    return isoDate;
+  }
 }
 
 window.CodeMindAPI = CodeMindAPI;

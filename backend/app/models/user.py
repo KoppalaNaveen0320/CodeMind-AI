@@ -21,5 +21,8 @@ class User(Base):
     github_token_type = Column(String(50), nullable=True)
     github_scope = Column(String(255), nullable=True)
 
+    # Session & Security Settings
+    session_timeout_minutes = Column(Integer, default=30, nullable=False)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

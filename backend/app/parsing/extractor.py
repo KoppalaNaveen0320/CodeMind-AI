@@ -56,6 +56,7 @@ class ExtractedCall:
     callee_name: str
     line_number: int
     evidence: str
+    receiver: Optional[str] = None
 
 
 class CodeExtractor:
@@ -107,14 +108,34 @@ class CodeExtractor:
             return "rust"
         elif fp.endswith(".java"):
             return "java"
-        elif fp.endswith(".html"):
+        elif fp.endswith(".dart"):
+            return "dart"
+        elif fp.endswith(".kt") or fp.endswith(".kts"):
+            return "kotlin"
+        elif fp.endswith(".swift"):
+            return "swift"
+        elif fp.endswith(".cs"):
+            return "csharp"
+        elif fp.endswith(".rb"):
+            return "ruby"
+        elif fp.endswith(".php"):
+            return "php"
+        elif fp.endswith(".c") or fp.endswith(".h"):
+            return "c"
+        elif fp.endswith(".cpp") or fp.endswith(".hpp") or fp.endswith(".cc"):
+            return "cpp"
+        elif fp.endswith(".html") or fp.endswith(".htm"):
             return "html"
-        elif fp.endswith(".css"):
+        elif fp.endswith(".css") or fp.endswith(".scss") or fp.endswith(".sass") or fp.endswith(".less"):
             return "css"
         elif fp.endswith(".json"):
             return "json"
         elif fp.endswith(".sql"):
             return "sql"
+        elif fp.endswith(".yaml") or fp.endswith(".yml"):
+            return "yaml"
+        elif fp.endswith(".toml"):
+            return "toml"
         return "text"
 
     @staticmethod
@@ -608,37 +629,80 @@ class CodeExtractor:
         symbols: List[ExtractedSymbol] = []
         lines = content.decode("utf-8", "ignore").splitlines()
 
+        re_class = re.compile(r'^(?:(?:export|public|private|protected|abstract|sealed|final)\s+)*(?:class|interface|struct|enum|trait)\s+([A-Za-z0-9_]+)')
+        re_go_struct = re.compile(r'^type\s+([A-Za-z0-9_]+)\s+struct\b')
+        re_func = re.compile(
+            r'^(?:(?:export|public|private|protected|static|async|override|virtual|final|pub|pub\(crate\))\s+)*'
+            r'(?:def|function|fn|fun|func)\s+'
+            r'(?:\([A-Za-z0-9_ *&,.\-]+\)\s+)?'  # Go receiver like (r *Repo)
+            r'([A-Za-z0-9_]+)\s*\('
+        )
+        # Typed method signatures like in Java, C#, Dart (e.g. Widget build(BuildContext context), void main())
+        re_typed_method = re.compile(
+            r'^(?:(?:public|private|protected|static|final|override|async)\s+)+'
+            r'(?:[A-Za-z0-9_<>[\]?, ]+)\s+([A-Za-z0-9_]+)\s*\([^{;]*\)\s*(?:\{|=>|throws)'
+        )
+        re_dart_method = re.compile(
+            r'^(?:Widget|void|Future<[^>]*>|Stream<[^>]*>|String|int|double|bool)\s+([A-Za-z0-9_]+)\s*\([^{;]*\)\s*(?:\{|=>)'
+        )
+
         for idx, line in enumerate(lines, start=1):
             s = line.strip()
-            # Simple heuristic detection for classes and functions
-            if s.startswith("class ") and (":" in s or "{" in s):
-                name = s.split()[1].split("(")[0].split("{")[0].split(":")[0]
+            if not s or s.startswith("//") or s.startswith("#") or s.startswith("/*"):
+                continue
+
+            # 1. Classes, Structs, Interfaces
+            m_cls = re_class.match(s) or re_go_struct.match(s)
+            if m_cls:
+                name = m_cls.group(1)
                 symbols.append(ExtractedSymbol(
                     name=name,
                     kind="class",
-                    signature=s,
+                    signature=s[:100],
                     start_line=idx,
                     end_line=idx,
-                    start_column=0,
+                    start_column=line.find(name) if name in line else 0,
                     end_column=len(line)
                 ))
-            elif (s.startswith("def ") or s.startswith("function ") or s.startswith("fn ")) and ("(" in s):
-                parts = s.split("(")
-                name = parts[0].split()[-1]
+                continue
+
+            # 2. Functions & Methods with keywords
+            m_fn = re_func.match(s)
+            if m_fn:
+                name = m_fn.group(1)
                 symbols.append(ExtractedSymbol(
                     name=name,
                     kind="function",
-                    signature=s,
+                    signature=s[:100],
                     start_line=idx,
                     end_line=idx,
-                    start_column=0,
+                    start_column=line.find(name) if name in line else 0,
                     end_column=len(line)
                 ))
-            elif s.startswith("import ") or s.startswith("from ") or s.startswith("require("):
+                continue
+
+            # 3. Typed methods (Java, C#, Dart, etc.)
+            m_tm = re_typed_method.match(s) or re_dart_method.match(s)
+            if m_tm:
+                name = m_tm.group(1)
+                if name not in ("if", "for", "while", "switch", "catch"):
+                    symbols.append(ExtractedSymbol(
+                        name=name,
+                        kind="function",
+                        signature=s[:100],
+                        start_line=idx,
+                        end_line=idx,
+                        start_column=line.find(name) if name in line else 0,
+                        end_column=len(line)
+                    ))
+                    continue
+
+            # 4. Imports & packages
+            if s.startswith("import ") or s.startswith("from ") or s.startswith("package ") or s.startswith("use ") or s.startswith("using ") or s.startswith("require("):
                 symbols.append(ExtractedSymbol(
-                    name=s,
+                    name=s[:80],
                     kind="import",
-                    signature=s,
+                    signature=s[:80],
                     start_line=idx,
                     end_line=idx,
                     start_column=0,
@@ -662,23 +726,35 @@ class CodeExtractor:
         if lang == "python":
             import ast
             try:
-                tree = ast.parse(content.decode("utf-8", "ignore"))
+                raw_code = content.decode("utf-8", "ignore")
+                # Normalize any // headers from chunk texts to # comments so Python AST parse succeeds
+                norm_lines = [
+                    ("# " + l.strip()[2:]) if l.strip().startswith("//") else l
+                    for l in raw_code.splitlines()
+                ]
+                tree = ast.parse("\n".join(norm_lines))
                 for node in ast.walk(tree):
                     if isinstance(node, (ast.FunctionDef, getattr(ast, "AsyncFunctionDef", ()))):
                         caller = node.name
                         for child in ast.walk(node):
                             if isinstance(child, ast.Call) and child is not node:
                                 callee = None
+                                receiver = None
                                 if isinstance(child.func, ast.Name):
                                     callee = child.func.id
                                 elif isinstance(child.func, ast.Attribute):
                                     callee = child.func.attr
-                                if callee and callee != caller:
+                                    if isinstance(child.func.value, ast.Name):
+                                        receiver = child.func.value.id
+                                    elif isinstance(child.func.value, ast.Attribute):
+                                        receiver = child.func.value.attr
+                                if callee:
                                     calls.append(ExtractedCall(
                                         caller_name=caller,
                                         callee_name=callee,
                                         line_number=getattr(child, "lineno", node.lineno),
-                                        evidence=f"Call to {callee}() inside def {caller} at line {getattr(child, 'lineno', node.lineno)}"
+                                        evidence=f"Call to {callee}() inside def {caller} at line {getattr(child, 'lineno', node.lineno)}",
+                                        receiver=receiver,
                                     ))
                 for c in calls:
                     if c.caller_name:
@@ -693,7 +769,7 @@ class CodeExtractor:
 
         # Tree-sitter or regex fallback for JS/TS/other
         import re
-        call_pattern = re.compile(r"([a-zA-Z0-9_]+)\s*\(")
+        call_pattern = re.compile(r"(?:([a-zA-Z_][a-zA-Z0-9_]*)\.)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\(")
         lines = content.decode("utf-8", "ignore").splitlines()
         current_func = None
         for idx, line in enumerate(lines, start=1):
@@ -703,12 +779,13 @@ class CodeExtractor:
                 current_func = parts[0].split()[-1]
             elif current_func:
                 matches = call_pattern.findall(s)
-                for callee in matches:
-                    if callee not in ("if", "for", "while", "switch", "catch", "return", "require", current_func):
+                for receiver, callee in matches:
+                    if callee not in ("if", "for", "while", "switch", "catch", "return", "require"):
                         calls.append(ExtractedCall(
                             caller_name=current_func,
                             callee_name=callee,
                             line_number=idx,
+                            receiver=receiver if receiver else None,
                             evidence=f"Call to {callee}() in {current_func} at line {idx}: {s[:60]}"
                         ))
 

@@ -26,6 +26,7 @@ def test_dashboard_page(client: TestClient):
     "/security_insights.html",
     "/docs",
     "/docs.html",
+    "/documentation",
     "/settings",
     "/settings.html",
     "/index.html",

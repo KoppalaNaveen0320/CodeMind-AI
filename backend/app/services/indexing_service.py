@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
@@ -27,6 +27,7 @@ from backend.app.parsing.extractor import CodeExtractor
 from backend.app.parsing.chunker import CodeChunker
 from backend.app.graph.builder import KnowledgeGraphBuilder
 from backend.app.ingestion.change_detector import ChangeDetector, ChangeSet, FileSnapshot
+from backend.app.services.tech_stack_service import TechStackDetectionService
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,61 @@ def _sanitize_pg_identifier(val: Optional[str]) -> Optional[str]:
 
 
 class IndexingService:
-    _REPO_ASYNC_LOCKS: Dict[int, asyncio.Lock] = {}
+    _REPO_ASYNC_LOCKS: Dict[Any, asyncio.Lock] = {}
+
+    @classmethod
+    def _get_repo_async_lock(cls, repository_id: int) -> asyncio.Lock:
+        if repository_id not in cls._REPO_ASYNC_LOCKS:
+            cls._REPO_ASYNC_LOCKS[repository_id] = asyncio.Lock()
+        return cls._REPO_ASYNC_LOCKS[repository_id]
+
+    @classmethod
+    def recover_stale_indexing_jobs(cls, db: Optional[Session] = None) -> int:
+        """
+        Recovers jobs left in intermediate states (QUEUED, CLONING, PARSING, INDEXING)
+        due to server restart or process termination. Prevents repositories from being
+        permanently stuck in 'indexing' state.
+        Preserves the last known good index for previously indexed repositories.
+        """
+        should_close = False
+        if db is None:
+            db = SessionLocal()
+            should_close = True
+
+        try:
+            stale_jobs = db.query(IndexingJob).filter(
+                IndexingJob.status.in_(["QUEUED", "CLONING", "PARSING", "INDEXING"])
+            ).all()
+
+            recovered_count = 0
+            for job in stale_jobs:
+                job.status = "FAILED"
+                job.stage = "FAILED"
+                job.error_message = (
+                    "Indexing was interrupted by server restart or process termination. "
+                    "Retrying the indexing job will safely resume."
+                )
+                job.completed_at = datetime.now(timezone.utc)
+                recovered_count += 1
+
+                repo = db.query(Repository).filter(Repository.id == job.repository_id).first()
+                if repo:
+                    if repo.files_count and repo.files_count > 0 and repo.last_indexed_at is not None:
+                        repo.status = "ready"
+                    else:
+                        repo.status = "failed"
+
+            if recovered_count > 0:
+                db.commit()
+                logger.info(f"Recovered {recovered_count} stale indexing job(s) interrupted by restart.")
+            return recovered_count
+        except Exception as e:
+            logger.error(f"Error during stale indexing jobs recovery: {e}", exc_info=True)
+            db.rollback()
+            return 0
+        finally:
+            if should_close:
+                db.close()
 
     @classmethod
     def create_indexing_job(cls, db: Session, repository: Repository, branch: Optional[str] = None) -> IndexingJob:
@@ -261,9 +316,7 @@ class IndexingService:
         7. Only calls the embedding provider for new or modified chunks.
         8. Protects the previous valid index if scan, parse, or embedding errors occur.
         """
-        if repository_id not in cls._REPO_ASYNC_LOCKS:
-            cls._REPO_ASYNC_LOCKS[repository_id] = asyncio.Lock()
-        repo_async_lock = cls._REPO_ASYNC_LOCKS[repository_id]
+        repo_async_lock = cls._get_repo_async_lock(repository_id)
 
         if repo_async_lock.locked():
             logger.info(f"Indexing already in progress for repo {repository_id}; aborting redundant concurrent execution.")
@@ -330,9 +383,9 @@ class IndexingService:
                     job.progress_percent = 10
                     db.commit()
 
-                # Retrieve user access token
+                # Retrieve authorized access token for this repository
                 user = db.query(User).filter(User.id == repo.user_id).first() if repo.user_id else None
-                token = user.github_access_token if user and user.github_access_token else None
+                token = GitHubService.resolve_token_for_repository(repo, db=db, user=user, allow_server_fallback=False)
 
                 # Pre-check for GitHub revision match (skip re-download if repository is unchanged)
                 is_mock_or_test = (
@@ -360,6 +413,12 @@ class IndexingService:
                             job.completed_at = datetime.now(timezone.utc)
                             repo.status = "ready"
                             repo.last_indexed_at = datetime.now(timezone.utc)
+                            if repo.tech_stack is None:
+                                try:
+                                    detected_stack = TechStackDetectionService.detect_from_db(db, repo.id)
+                                    repo.tech_stack = detected_stack.to_dict()
+                                except Exception:
+                                    pass
                             db.commit()
                             return
                     except Exception as check_err:
@@ -475,6 +534,16 @@ class IndexingService:
                     repo.apis_count = 0
                     repo.current_revision = commit_sha
                     repo.last_indexed_at = datetime.now(timezone.utc)
+                    repo.last_synced_commit_sha = commit_sha
+                    repo.latest_remote_commit_sha = commit_sha
+                    repo.last_synced_at = datetime.now(timezone.utc)
+                    repo.sync_status = "synced"
+                    repo.sync_error = None
+                    repo.sync_error_code = None
+                    repo.sync_error_category = None
+                    repo.sync_failed_operation = None
+                    repo.sync_suggested_action = None
+                    repo.sync_retry_count = 0
                     db.commit()
                     logger.info(f"Repository {repo.full_name} completed indexing with 0 eligible source files.")
                     return
@@ -564,10 +633,13 @@ class IndexingService:
                 total_to_process = len(change_set.modified) + len(change_set.added) + len(change_set.renamed)
 
                 # Process Modified files
+                BATCH_SIZE = 25
+                uncommitted_mods = 0
                 for snapshot, existing_file in change_set.modified:
-                    job = db.query(IndexingJob).filter(IndexingJob.id == job_id).first()
-                    if not job or job.status == "CANCELLED":
-                        return
+                    if uncommitted_mods == 0:
+                        job = db.query(IndexingJob).filter(IndexingJob.id == job_id).first()
+                        if not job or job.status == "CANCELLED":
+                            return
 
                     # Delete obsolete chunks and symbols for this modified file
                     db.query(CodeChunk).filter(
@@ -631,19 +703,37 @@ class IndexingService:
                         )
                         db.add(chunk_obj)
 
-                    db.commit()
+                    # Free snapshot content memory immediately
+                    snapshot.text_content = None
+                    snapshot.clean_bytes = None
+
                     processed_count += 1
-                    job.files_processed = processed_count
-                    pct = 50 + int((processed_count / max(1, total_to_process)) * 20)
-                    job.progress_percent = min(70, pct)
+                    uncommitted_mods += 1
+                    if uncommitted_mods >= BATCH_SIZE or processed_count == total_to_process:
+                        job = db.query(IndexingJob).filter(IndexingJob.id == job_id).first()
+                        if job:
+                            job.files_processed = processed_count
+                            pct = 50 + int((processed_count / max(1, total_to_process)) * 20)
+                            job.progress_percent = min(70, pct)
+                        db.commit()
+                        uncommitted_mods = 0
+
+                if uncommitted_mods > 0:
+                    job = db.query(IndexingJob).filter(IndexingJob.id == job_id).first()
+                    if job:
+                        job.files_processed = processed_count
+                        pct = 50 + int((processed_count / max(1, total_to_process)) * 20)
+                        job.progress_percent = min(70, pct)
                     db.commit()
 
                 # Process Added files (and new side of Renamed files)
                 files_to_add = list(change_set.added) + [new_s for _, new_s in change_set.renamed]
+                uncommitted_adds = 0
                 for snapshot in files_to_add:
-                    job = db.query(IndexingJob).filter(IndexingJob.id == job_id).first()
-                    if not job or job.status == "CANCELLED":
-                        return
+                    if uncommitted_adds == 0:
+                        job = db.query(IndexingJob).filter(IndexingJob.id == job_id).first()
+                        if not job or job.status == "CANCELLED":
+                            return
 
                     new_file = IndexedFile(
                         repository_id=repo.id,
@@ -704,11 +794,27 @@ class IndexingService:
                         )
                         db.add(chunk_obj)
 
-                    db.commit()
+                    # Free snapshot content memory immediately
+                    snapshot.text_content = None
+                    snapshot.clean_bytes = None
+
                     processed_count += 1
-                    job.files_processed = processed_count
-                    pct = 50 + int((processed_count / max(1, total_to_process)) * 20)
-                    job.progress_percent = min(70, pct)
+                    uncommitted_adds += 1
+                    if uncommitted_adds >= BATCH_SIZE or processed_count == total_to_process:
+                        job = db.query(IndexingJob).filter(IndexingJob.id == job_id).first()
+                        if job:
+                            job.files_processed = processed_count
+                            pct = 50 + int((processed_count / max(1, total_to_process)) * 20)
+                            job.progress_percent = min(70, pct)
+                        db.commit()
+                        uncommitted_adds = 0
+
+                if uncommitted_adds > 0:
+                    job = db.query(IndexingJob).filter(IndexingJob.id == job_id).first()
+                    if job:
+                        job.files_processed = processed_count
+                        pct = 50 + int((processed_count / max(1, total_to_process)) * 20)
+                        job.progress_percent = min(70, pct)
                     db.commit()
 
                 # Stage 5: KNOWLEDGE GRAPH CONSTRUCTION (INCREMENTAL)
@@ -756,7 +862,10 @@ class IndexingService:
                         job.error_message = f"Knowledge graph construction failed: {graph_err}".replace("\x00", "")
                         job.completed_at = datetime.now(timezone.utc)
                     if repo:
-                        repo.status = "failed"
+                        if repo.files_count and repo.files_count > 0 and repo.last_indexed_at is not None:
+                            repo.status = "ready"
+                        else:
+                            repo.status = "failed"
                     db.commit()
                     return
 
@@ -795,7 +904,10 @@ class IndexingService:
                                 job.error_message = f"Embedding generation failed: {err_msg}".replace("\x00", "")
                                 job.completed_at = datetime.now(timezone.utc)
                             if repo:
-                                repo.status = "failed"
+                                if repo.files_count and repo.files_count > 0 and repo.last_indexed_at is not None:
+                                    repo.status = "ready"
+                                else:
+                                    repo.status = "failed"
                             db.commit()
                             return
                     else:
@@ -810,7 +922,10 @@ class IndexingService:
                         job.error_message = f"Embedding generation error: {emb_err}".replace("\x00", "")
                         job.completed_at = datetime.now(timezone.utc)
                     if repo:
-                        repo.status = "failed"
+                        if repo.files_count and repo.files_count > 0 and repo.last_indexed_at is not None:
+                            repo.status = "ready"
+                        else:
+                            repo.status = "failed"
                     db.commit()
                     return
 
@@ -843,6 +958,23 @@ class IndexingService:
                 job.error_message = None
                 job.completed_at = datetime.now(timezone.utc)
 
+                # Stage 7.5: Detect and Refresh Technology Stack
+                try:
+                    if source_folder and Path(source_folder).exists():
+                        detected_stack = TechStackDetectionService.detect_from_directory(source_folder)
+                    else:
+                        detected_stack = TechStackDetectionService.detect_from_db(db, repo.id)
+                    repo.tech_stack = detected_stack.to_dict()
+                except Exception as stack_err:
+                    logger.warning(f"Could not compute tech stack for {repo.full_name}: {stack_err}")
+
+                # Stage 7.6: Invalidate Architecture Analysis Cache
+                try:
+                    from backend.app.services.architecture_service import ArchitectureAnalysisEngine
+                    ArchitectureAnalysisEngine.invalidate_cache(repo.id)
+                except Exception as arch_err:
+                    logger.warning(f"Could not invalidate architecture cache for {repo.full_name}: {arch_err}")
+
                 repo.status = "ready"
                 repo.files_count = actual_files_count
                 repo.symbols_count = actual_symbols_count
@@ -850,6 +982,16 @@ class IndexingService:
                 repo.apis_count = actual_apis_count
                 repo.current_revision = commit_sha
                 repo.last_indexed_at = datetime.now(timezone.utc)
+                repo.last_synced_commit_sha = commit_sha
+                repo.latest_remote_commit_sha = commit_sha
+                repo.last_synced_at = datetime.now(timezone.utc)
+                repo.sync_status = "synced"
+                repo.sync_error = None
+                repo.sync_error_code = None
+                repo.sync_error_category = None
+                repo.sync_failed_operation = None
+                repo.sync_suggested_action = None
+                repo.sync_retry_count = 0
 
                 db.commit()
                 logger.info(
@@ -876,7 +1018,10 @@ class IndexingService:
                         job.completed_at = datetime.now(timezone.utc)
                     repo = db.query(Repository).filter(Repository.id == repository_id).first()
                     if repo:
-                        repo.status = "failed"
+                        if repo.files_count and repo.files_count > 0 and repo.last_indexed_at is not None:
+                            repo.status = "ready"
+                        else:
+                            repo.status = "failed"
                     db.commit()
                 except Exception as recovery_err:
                     logger.error(f"Failed to record indexing failure in main session: {recovery_err}")
@@ -890,7 +1035,10 @@ class IndexingService:
                             job.completed_at = datetime.now(timezone.utc)
                         repo = fallback_db.query(Repository).filter(Repository.id == repository_id).first()
                         if repo:
-                            repo.status = "failed"
+                            if repo.files_count and repo.files_count > 0 and repo.last_indexed_at is not None:
+                                repo.status = "ready"
+                            else:
+                                repo.status = "failed"
                         fallback_db.commit()
                         fallback_db.close()
                     except Exception:

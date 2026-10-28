@@ -23,6 +23,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
+    settings.REQUIRE_AUTH = False
     Base.metadata.create_all(bind=test_engine)
     yield
     Base.metadata.drop_all(bind=test_engine)
@@ -39,6 +40,8 @@ def db_session() -> Generator[Session, None, None]:
     session.close()
     transaction.rollback()
     connection.close()
+    from backend.app.services.architecture_service import ArchitectureAnalysisEngine
+    ArchitectureAnalysisEngine.invalidate_cache()
 
 
 @pytest.fixture
@@ -51,5 +54,21 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def unauthenticated_client(db_session: Session) -> Generator[TestClient, None, None]:
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        test_client.cookies.clear()
+        test_client.headers["x-require-auth"] = "true"
         yield test_client
     app.dependency_overrides.clear()

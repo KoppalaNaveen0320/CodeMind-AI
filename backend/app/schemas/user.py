@@ -17,6 +17,7 @@ class UserCreate(UserBase):
 class UserRead(UserBase):
     id: int
     is_active: bool
+    session_timeout_minutes: int = 30
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

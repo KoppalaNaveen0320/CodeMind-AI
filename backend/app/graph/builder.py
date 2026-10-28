@@ -94,7 +94,7 @@ class KnowledgeGraphBuilder:
             is_verified: bool = True,
             evidence: Optional[str] = None,
         ):
-            if source_node.id == target_node.id:
+            if source_node.id == target_node.id and edge_type != "CALLS":
                 return
             edge_key = (source_node.node_key, target_node.node_key, edge_type)
             if edge_key in created_edges_set:
@@ -131,6 +131,7 @@ class KnowledgeGraphBuilder:
 
         # 3. Create File and Symbol Nodes
         symbol_nodes_by_name: Dict[str, List[GraphNode]] = {}
+        imported_files_by_source: Dict[str, Set[str]] = {}
 
         for indexed_file in files:
             file_node_key = f"repo:{repository.id}:file:{indexed_file.path}"
@@ -190,7 +191,8 @@ class KnowledgeGraphBuilder:
                         language=indexed_file.language,
                     )
                     symbol_nodes_by_name.setdefault(simple_name, []).append(sym_node)
-                    symbol_nodes_by_name.setdefault(sym.name, []).append(sym_node)
+                    if sym.name != simple_name:
+                        symbol_nodes_by_name.setdefault(sym.name, []).append(sym_node)
 
                     if parent_class and parent_class in classes_in_file:
                         add_edge(classes_in_file[parent_class], sym_node, "DEFINES", is_verified=True, evidence=f"Method in {parent_class} at line {sym.start_line}")
@@ -200,7 +202,8 @@ class KnowledgeGraphBuilder:
                 elif sym.kind == "import":
                     cls._process_import_symbol(
                         db, repository, indexed_file, file_node, sym,
-                        file_by_path, file_by_name, get_or_create_node, add_edge
+                        file_by_path, file_by_name, get_or_create_node, add_edge,
+                        imported_files_by_source
                     )
 
 
@@ -212,20 +215,76 @@ class KnowledgeGraphBuilder:
                 if not indexed_file:
                     continue
                 for call in file_calls:
-                    # Find caller node in current file
-                    caller_nodes = [
+                    # Find caller node in current file (prefer node enclosing call.line_number)
+                    file_callers = [
                         n for n in symbol_nodes_by_name.get(call.caller_name, [])
                         if n.file_path == indexed_file.path
                     ]
-                    # Find callee node (within same file or anywhere across repo files)
-                    callee_candidates = symbol_nodes_by_name.get(call.callee_name, [])
-                    if caller_nodes and callee_candidates:
-                        # Prioritize callee in same file, otherwise first matching candidate
-                        callee_node = next(
-                            (c for c in callee_candidates if c.file_path == indexed_file.path),
-                            callee_candidates[0]
-                        )
+                    if not file_callers:
+                        continue
+                    enclosing_callers = [
+                        n for n in file_callers
+                        if n.start_line is not None and n.end_line is not None and n.start_line <= call.line_number <= n.end_line
+                    ]
+                    caller_nodes = enclosing_callers if enclosing_callers else file_callers
+
+                    # Find callee node (strictly within same file or explicitly imported files)
+                    raw_callee_candidates = symbol_nodes_by_name.get(call.callee_name, [])
+                    if not raw_callee_candidates:
+                        continue
+
+                    # Deduplicate candidate nodes
+                    seen_c_ids = set()
+                    callee_candidates = []
+                    for c in raw_callee_candidates:
+                        c_id = id(c) if c.id is None else c.id
+                        if c_id not in seen_c_ids:
+                            seen_c_ids.add(c_id)
+                            callee_candidates.append(c)
+
+                    local_callees = [c for c in callee_candidates if c.file_path == indexed_file.path]
+                    callee_node = None
+                    call_receiver = getattr(call, "receiver", None)
+
+                    if call_receiver in ("self", "cls"):
+                        # Internal method invocation on same class/file
+                        callee_node = local_callees[0] if local_callees else None
+                    elif call_receiver and call_receiver not in ("self", "cls"):
+                        # Explicit receiver like DashboardService.get_dashboard or service.get_dashboard
+                        imported_paths = imported_files_by_source.get(indexed_file.path, set())
+                        receiver_str = str(call_receiver).lower().replace("_", "")
+                        # 1. Match imported files where receiver matches the path
+                        imported_callees = [c for c in callee_candidates if c.file_path in imported_paths]
+                        matching_receiver = [c for c in imported_callees if receiver_str in c.file_path.lower().replace("_", "")]
+                        if matching_receiver:
+                            callee_node = matching_receiver[0]
+                        elif imported_callees:
+                            callee_node = imported_callees[0]
+                        else:
+                            # 2. Match any callee candidate where receiver matches the path
+                            matching_all = [c for c in callee_candidates if receiver_str in c.file_path.lower().replace("_", "")]
+                            if matching_all:
+                                callee_node = matching_all[0]
+                            elif len(callee_candidates) == 1:
+                                callee_node = callee_candidates[0]
+                    elif local_callees:
+                        # Local call within same file (bare function invocation e.g. helper_func())
+                        callee_node = local_callees[0]
+                    else:
+                        # Cross-file call with no receiver: require verified import of target file or unambiguous single repo candidate
+                        imported_paths = imported_files_by_source.get(indexed_file.path, set())
+                        if imported_paths:
+                            imported_callees = [c for c in callee_candidates if c.file_path in imported_paths]
+                            if imported_callees:
+                                callee_node = imported_callees[0]
+                        elif len(callee_candidates) == 1:
+                            # File has no parsed imports (e.g. unit test or standalone script) and callee symbol is uniquely defined
+                            callee_node = callee_candidates[0]
+
+                    if callee_node:
                         for caller_node in caller_nodes:
+                            if caller_node.id == callee_node.id and call_receiver not in (None, "", "self", "cls"):
+                                continue
                             add_edge(
                                 caller_node,
                                 callee_node,
@@ -267,6 +326,7 @@ class KnowledgeGraphBuilder:
         file_by_name: Dict[str, List[IndexedFile]],
         get_or_create_node,
         add_edge,
+        imported_files_by_source: Optional[Dict[str, Set[str]]] = None,
     ):
         raw = sym.signature or sym.name or ""
         # Match python / javascript import patterns
@@ -334,6 +394,8 @@ class KnowledgeGraphBuilder:
                 is_verified=True,
                 evidence=f"Import statement at line {sym.start_line}: {raw[:80]}",
             )
+            if imported_files_by_source is not None:
+                imported_files_by_source.setdefault(source_file.path, set()).add(matched_file.path)
         else:
             # External dependency package
             pkg_name = target_path_hint.split("/")[0].split(".")[0]
@@ -489,12 +551,21 @@ class KnowledgeGraphBuilder:
                     if n.symbol_name and n.symbol_name != n.name:
                         symbol_nodes_by_name.setdefault(n.symbol_name, []).append(n)
 
-            # Load existing edges to prevent duplicates
+            # Load existing edges and imports
             all_db_edges = db.query(GraphEdge).filter(GraphEdge.repository_id == repository.id).all()
             created_edges_set: Set[Tuple[int, int, str]] = {
                 (e.source_node_id, e.target_node_id, e.edge_type) for e in all_db_edges
             }
             edges_to_add: List[GraphEdge] = []
+
+            id_to_file_path = {n.id: n.file_path for n in all_db_nodes if n.file_path}
+            imported_files_by_source: Dict[str, Set[str]] = {}
+            for e in all_db_edges:
+                if e.edge_type == "IMPORTS":
+                    src_fp = id_to_file_path.get(e.source_node_id)
+                    tgt_fp = id_to_file_path.get(e.target_node_id)
+                    if src_fp and tgt_fp:
+                        imported_files_by_source.setdefault(src_fp, set()).add(tgt_fp)
 
             # Helper to get or create node
             def get_or_create_node(
@@ -546,7 +617,7 @@ class KnowledgeGraphBuilder:
                 is_verified: bool = True,
                 evidence: Optional[str] = None,
             ):
-                if source_node.id == target_node.id:
+                if source_node.id == target_node.id and edge_type != "CALLS":
                     return
                 edge_tuple = (source_node.id, target_node.id, edge_type)
                 if edge_tuple in created_edges_set:
@@ -636,7 +707,8 @@ class KnowledgeGraphBuilder:
                     elif sym.kind == "import":
                         cls._process_import_symbol(
                             db, repository, indexed_file, file_node, sym,
-                            file_by_path, file_by_name, get_or_create_node, add_edge
+                            file_by_path, file_by_name, get_or_create_node, add_edge,
+                            imported_files_by_source
                         )
 
             # 5. Verified Static Calls for affected files
@@ -647,17 +719,63 @@ class KnowledgeGraphBuilder:
                     if not indexed_file or indexed_file.path not in affected:
                         continue
                     for call in file_calls:
-                        caller_nodes = [
+                        file_callers = [
                             n for n in symbol_nodes_by_name.get(call.caller_name, [])
                             if n.file_path == indexed_file.path
                         ]
+                        if not file_callers:
+                            continue
+                        enclosing_callers = [
+                            n for n in file_callers
+                            if n.start_line is not None and n.end_line is not None and n.start_line <= call.line_number <= n.end_line
+                        ]
+                        caller_nodes = enclosing_callers if enclosing_callers else file_callers
+
                         callee_candidates = symbol_nodes_by_name.get(call.callee_name, [])
-                        if caller_nodes and callee_candidates:
-                            callee_node = next(
-                                (c for c in callee_candidates if c.file_path == indexed_file.path),
-                                callee_candidates[0]
-                            )
+                        if not callee_candidates:
+                            continue
+
+                        local_callees = [c for c in callee_candidates if c.file_path == indexed_file.path]
+                        callee_node = None
+                        call_receiver = getattr(call, "receiver", None)
+
+                        if call_receiver in ("self", "cls"):
+                            callee_node = local_callees[0] if local_callees else None
+                        elif call_receiver and call_receiver not in ("self", "cls"):
+                            # Explicit receiver like DashboardService.get_dashboard or service.get_dashboard
+                            imported_paths = imported_files_by_source.get(indexed_file.path, set())
+                            receiver_str = str(call_receiver).lower().replace("_", "")
+                            # 1. Match imported files where receiver matches the path
+                            imported_callees = [c for c in callee_candidates if c.file_path in imported_paths]
+                            matching_receiver = [c for c in imported_callees if receiver_str in c.file_path.lower().replace("_", "")]
+                            if matching_receiver:
+                                callee_node = matching_receiver[0]
+                            elif imported_callees:
+                                callee_node = imported_callees[0]
+                            else:
+                                # 2. Match any callee candidate where receiver matches the path
+                                matching_all = [c for c in callee_candidates if receiver_str in c.file_path.lower().replace("_", "")]
+                                if matching_all:
+                                    callee_node = matching_all[0]
+                                elif len(callee_candidates) == 1:
+                                    callee_node = callee_candidates[0]
+                        elif local_callees:
+                            callee_node = local_callees[0]
+                        else:
+                            # Cross-file call with no receiver: require verified import of target file or unambiguous single repo candidate
+                            imported_paths = imported_files_by_source.get(indexed_file.path, set())
+                            if imported_paths:
+                                imported_callees = [c for c in callee_candidates if c.file_path in imported_paths]
+                                if imported_callees:
+                                    callee_node = imported_callees[0]
+                            elif len(callee_candidates) == 1:
+                                # File has no parsed imports (e.g. unit test or standalone script) and callee symbol is uniquely defined
+                                callee_node = callee_candidates[0]
+
+                        if callee_node:
                             for caller_node in caller_nodes:
+                                if caller_node.id == callee_node.id and call_receiver not in (None, "", "self", "cls"):
+                                    continue
                                 add_edge(
                                     caller_node,
                                     callee_node,

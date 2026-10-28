@@ -65,20 +65,21 @@ class CallHierarchyService:
             "language": ifile.language,
         }
 
-        # Find corresponding graph node
-        node = (
-            db.query(GraphNode)
-            .filter(
-                GraphNode.repository_id == repository_id,
-                GraphNode.file_path == ifile.path,
-                or_(
-                    GraphNode.name == sym.name,
-                    GraphNode.symbol_name == sym.name,
-                    GraphNode.name == sym.name.split(".")[-1],
-                ),
-            )
-            .first()
+        # Find corresponding graph node (prefer matching start_line to disambiguate same-named symbols)
+        node_query = db.query(GraphNode).filter(
+            GraphNode.repository_id == repository_id,
+            GraphNode.file_path == ifile.path,
+            or_(
+                GraphNode.name == sym.name,
+                GraphNode.symbol_name == sym.name,
+                GraphNode.name == sym.name.split(".")[-1],
+            ),
         )
+        node = None
+        if sym.start_line is not None:
+            node = node_query.filter(GraphNode.start_line == sym.start_line).first()
+        if not node:
+            node = node_query.first()
 
         if not node:
             return CallHierarchyResponse(
@@ -184,6 +185,38 @@ class CallHierarchyService:
                     }
                     for n in direct_nodes
                 ]
+                all_callers = []
+                all_callees = []
+                seen_callers = set()
+                seen_callees = set()
+                for cand_node in direct_nodes:
+                    cand_info = {
+                        "name": cand_node.name,
+                        "kind": cand_node.node_type,
+                        "file_path": cand_node.file_path,
+                        "start_line": cand_node.start_line,
+                        "end_line": cand_node.end_line,
+                        "signature": cand_node.signature,
+                    }
+                    sub_h = cls._build_hierarchy(
+                        db=db,
+                        repository=repo,
+                        root_node=cand_node,
+                        target_info=cand_info,
+                        direction=direction,
+                        max_depth=max_depth,
+                    )
+                    for item in sub_h.callers:
+                        c_key = (item.caller_name or item.symbol_name, item.caller_file_path or item.file_path, item.caller_start_line or item.start_line)
+                        if c_key not in seen_callers:
+                            seen_callers.add(c_key)
+                            all_callers.append(item)
+                    for item in sub_h.callees:
+                        c_key = (item.callee_name or item.symbol_name, item.callee_file_path or item.file_path, item.callee_start_line or item.start_line)
+                        if c_key not in seen_callees:
+                            seen_callees.add(c_key)
+                            all_callees.append(item)
+
                 return CallHierarchyResponse(
                     repository_id=repository_id,
                     repository_name=repo.name,
@@ -193,7 +226,11 @@ class CallHierarchyService:
                     is_ambiguous=True,
                     candidates=cand_list,
                     ambiguous_candidates=cand_list,
-                    explanation=f"Ambiguous symbol: Found {len(direct_nodes)} candidates named '{clean_name}' in different files. Provide a file_path to disambiguate.",
+                    callers=all_callers,
+                    callees=all_callees,
+                    total_callers=len(all_callers),
+                    total_callees=len(all_callees),
+                    explanation=f"Ambiguous symbol: Found {len(direct_nodes)} candidates named '{clean_name}' across different files. Aggregated verified call relationships from all candidates.",
                 )
 
             chosen_node = direct_nodes[0]
@@ -226,6 +263,32 @@ class CallHierarchyService:
                 }
                 for s, f in candidates
             ]
+            all_callers = []
+            all_callees = []
+            seen_callers = set()
+            seen_callees = set()
+            for s, f in candidates:
+                try:
+                    sub_h = cls.get_call_hierarchy_by_id(
+                        db=db,
+                        repository_id=repository_id,
+                        symbol_id=s.id,
+                        direction=direction,
+                        max_depth=max_depth,
+                    )
+                    for item in sub_h.callers:
+                        c_key = (item.caller_name or item.symbol_name, item.caller_file_path or item.file_path, item.caller_start_line or item.start_line)
+                        if c_key not in seen_callers:
+                            seen_callers.add(c_key)
+                            all_callers.append(item)
+                    for item in sub_h.callees:
+                        c_key = (item.callee_name or item.symbol_name, item.callee_file_path or item.file_path, item.callee_start_line or item.start_line)
+                        if c_key not in seen_callees:
+                            seen_callees.add(c_key)
+                            all_callees.append(item)
+                except Exception:
+                    pass
+
             return CallHierarchyResponse(
                 repository_id=repository_id,
                 repository_name=repo.name,
@@ -235,7 +298,11 @@ class CallHierarchyService:
                 is_ambiguous=True,
                 candidates=cand_list,
                 ambiguous_candidates=cand_list,
-                explanation=f"Ambiguous symbol: Found {len(candidates)} candidates named '{clean_name}' in different files. Specify file_path or symbol_id to disambiguate.",
+                callers=all_callers,
+                callees=all_callees,
+                total_callers=len(all_callers),
+                total_callees=len(all_callees),
+                explanation=f"Ambiguous symbol: Found {len(candidates)} candidates named '{clean_name}' across different files. Aggregated verified call relationships from all candidates.",
             )
 
         sym, ifile = candidates[0]
@@ -348,14 +415,43 @@ class CallHierarchyService:
             if is_cycle:
                 cycle_detected = True
 
-            sym = (
-                db.query(CodeSymbol)
-                .filter(
-                    CodeSymbol.repository_id == repository_id,
-                    CodeSymbol.name == caller_node.name,
+            sym = None
+            if caller_node.file_path:
+                sq = (
+                    db.query(CodeSymbol)
+                    .join(IndexedFile, CodeSymbol.file_id == IndexedFile.id)
+                    .filter(
+                        CodeSymbol.repository_id == repository_id,
+                        IndexedFile.path == caller_node.file_path,
+                        or_(
+                            CodeSymbol.name == caller_node.name,
+                            CodeSymbol.name == caller_node.symbol_name,
+                            CodeSymbol.name.endswith(f".{caller_node.name}"),
+                        ),
+                    )
                 )
-                .first()
-            )
+                if caller_node.start_line is not None:
+                    sym = sq.filter(CodeSymbol.start_line == caller_node.start_line).first()
+                if not sym:
+                    sym = sq.first()
+
+            if not sym:
+                sym = (
+                    db.query(CodeSymbol)
+                    .filter(
+                        CodeSymbol.repository_id == repository_id,
+                        CodeSymbol.name == caller_node.name,
+                    )
+                    .first()
+                )
+
+            # Determine true call site line from edge evidence if recorded
+            call_site_line = caller_node.start_line or (sym.start_line if sym else None)
+            if edge.evidence:
+                import re
+                m = re.search(r"at line (\d+)", edge.evidence)
+                if m:
+                    call_site_line = int(m.group(1))
 
             nested_calls: List[Dict[str, Any]] = []
             if not is_cycle and current_depth < max_depth:
@@ -369,7 +465,7 @@ class CallHierarchyService:
                 )
                 if sub_cycle:
                     cycle_detected = True
-                nested_calls = [it.dict() for it in sub_items]
+                nested_calls = [it.model_dump() if hasattr(it, "model_dump") else it.dict() for it in sub_items]
 
             items.append(
                 CallHierarchyItem(
@@ -378,14 +474,14 @@ class CallHierarchyService:
                     symbol_name=caller_node.name,
                     caller_name=caller_node.name,
                     kind=caller_node.node_type,
-                    file_path=caller_node.file_path or "",
-                    caller_file_path=caller_node.file_path or "",
+                    file_path=caller_node.file_path or (sym.file.path if sym and sym.file else ""),
+                    caller_file_path=caller_node.file_path or (sym.file.path if sym and sym.file else ""),
                     start_line=caller_node.start_line or (sym.start_line if sym else None),
                     end_line=caller_node.end_line or (sym.end_line if sym else None),
                     caller_start_line=caller_node.start_line or (sym.start_line if sym else None),
                     caller_end_line=caller_node.end_line or (sym.end_line if sym else None),
-                    call_line=caller_node.start_line,
-                    call_site_line=caller_node.start_line,
+                    call_line=call_site_line,
+                    call_site_line=call_site_line,
                     evidence=edge.evidence,
                     is_verified=edge.is_verified,
                     is_ambiguous=False,
@@ -429,14 +525,42 @@ class CallHierarchyService:
             if is_cycle:
                 cycle_detected = True
 
-            sym = (
-                db.query(CodeSymbol)
-                .filter(
-                    CodeSymbol.repository_id == repository_id,
-                    CodeSymbol.name == callee_node.name,
+            sym = None
+            if callee_node.file_path:
+                sq = (
+                    db.query(CodeSymbol)
+                    .join(IndexedFile, CodeSymbol.file_id == IndexedFile.id)
+                    .filter(
+                        CodeSymbol.repository_id == repository_id,
+                        IndexedFile.path == callee_node.file_path,
+                        or_(
+                            CodeSymbol.name == callee_node.name,
+                            CodeSymbol.name == callee_node.symbol_name,
+                            CodeSymbol.name.endswith(f".{callee_node.name}"),
+                        ),
+                    )
                 )
-                .first()
-            )
+                if callee_node.start_line is not None:
+                    sym = sq.filter(CodeSymbol.start_line == callee_node.start_line).first()
+                if not sym:
+                    sym = sq.first()
+
+            if not sym:
+                sym = (
+                    db.query(CodeSymbol)
+                    .filter(
+                        CodeSymbol.repository_id == repository_id,
+                        CodeSymbol.name == callee_node.name,
+                    )
+                    .first()
+                )
+
+            call_site_line = callee_node.start_line or (sym.start_line if sym else None)
+            if edge.evidence:
+                import re
+                m = re.search(r"at line (\d+)", edge.evidence)
+                if m:
+                    call_site_line = int(m.group(1))
 
             nested_calls: List[Dict[str, Any]] = []
             if not is_cycle and current_depth < max_depth:
@@ -450,7 +574,7 @@ class CallHierarchyService:
                 )
                 if sub_cycle:
                     cycle_detected = True
-                nested_calls = [it.dict() for it in sub_items]
+                nested_calls = [it.model_dump() if hasattr(it, "model_dump") else it.dict() for it in sub_items]
 
             items.append(
                 CallHierarchyItem(
@@ -459,14 +583,14 @@ class CallHierarchyService:
                     symbol_name=callee_node.name,
                     callee_name=callee_node.name,
                     kind=callee_node.node_type,
-                    file_path=callee_node.file_path or "",
-                    callee_file_path=callee_node.file_path or "",
+                    file_path=callee_node.file_path or (sym.file.path if sym and sym.file else ""),
+                    callee_file_path=callee_node.file_path or (sym.file.path if sym and sym.file else ""),
                     start_line=callee_node.start_line or (sym.start_line if sym else None),
                     end_line=callee_node.end_line or (sym.end_line if sym else None),
                     callee_start_line=callee_node.start_line or (sym.start_line if sym else None),
                     callee_end_line=callee_node.end_line or (sym.end_line if sym else None),
-                    call_line=callee_node.start_line,
-                    call_site_line=callee_node.start_line,
+                    call_line=call_site_line,
+                    call_site_line=call_site_line,
                     evidence=edge.evidence,
                     is_verified=edge.is_verified,
                     is_ambiguous=False,

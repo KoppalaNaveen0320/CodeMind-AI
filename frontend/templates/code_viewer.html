@@ -8,7 +8,7 @@
     <link rel="icon" type="image/svg+xml" href="/static/assets/favicon.svg" />
     <link rel="stylesheet" href="/static/css/styles.css" />
   </head>
-  <body class="full-page-mode">
+  <body class="full-page-mode code-viewer-page-body">
     <div class="app-shell">
       
     <aside class="sidebar">
@@ -29,7 +29,12 @@
           <span>Repositories</span>
           
         </a>
-        <a href="/assistant" class="nav-item active" data-view="assistant">
+        <a href="/code_viewer" class="nav-item active" data-view="code_viewer">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
+          <span>Code Viewer</span>
+          
+        </a>
+        <a href="/assistant" class="nav-item " data-view="assistant">
           <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.7 4.3L6 9l4.3 1.7L12 15l1.7-4.3L18 9l-4.3-1.7L12 3Z" /><path d="m5 15-.8 2.2L2 18l2.2.8L5 21l.8-2.2L8 18l-2.2-.8L5 15Z" /></svg>
           <span>AI Code Assistant</span>
           
@@ -54,7 +59,7 @@
           <span>Security Insights</span>
           <span class="nav-count" id="sidebar-security-badge" style="display: none;"></span>
         </a>
-        <a href="/docs" class="nav-item " data-view="docs">
+        <a href="/documentation" class="nav-item " data-view="docs">
           <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14Z" /><path d="M8 7h8M8 11h6" /></svg>
           <span>Documentation</span>
           

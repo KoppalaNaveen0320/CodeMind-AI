@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, UniqueConstraint, Index
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, deferred
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 from backend.app.db.session import Base
@@ -23,7 +23,7 @@ class CodeChunk(Base):
     start_line = Column(Integer, nullable=False)
     end_line = Column(Integer, nullable=False)
     embedding_model = Column(String(100), nullable=True)
-    embedding = Column(Vector(settings.EMBEDDING_DIMENSION), nullable=True)
+    embedding = deferred(Column(Vector(settings.EMBEDDING_DIMENSION), nullable=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     repository = relationship("Repository", back_populates="code_chunks")

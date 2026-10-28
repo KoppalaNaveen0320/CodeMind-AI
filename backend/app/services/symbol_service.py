@@ -52,8 +52,22 @@ class SymbolService:
         if repository_id is not None:
             base_query = base_query.filter(CodeSymbol.repository_id == repository_id)
             filters_applied["repository_id"] = repository_id
-        elif user_id is not None:
-            base_query = base_query.filter(or_(Repository.user_id == user_id, Repository.user_id.is_(None)))
+        if user_id is not None:
+            from backend.app.models.user import User
+            user = db.query(User).filter(User.id == user_id).first()
+            if user and user.workspace_name:
+                workspace_user_ids = [
+                    u[0] for u in db.query(User.id).filter(User.workspace_name == user.workspace_name).all()
+                ]
+                base_query = base_query.filter(
+                    or_(
+                        Repository.user_id == user.id,
+                        Repository.user_id.in_(workspace_user_ids),
+                        Repository.user_id.is_(None),
+                    )
+                )
+            else:
+                base_query = base_query.filter(or_(Repository.user_id == user_id, Repository.user_id.is_(None)))
 
         if file_path:
             clean_fp = file_path.strip().replace("\\", "/")

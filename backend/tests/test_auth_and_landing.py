@@ -47,7 +47,7 @@ def test_session_token_creation_and_decoding():
 
 
 
-def test_register_duplicate_and_login_flow():
+def test_register_duplicate_and_login_flow(client: TestClient):
     """Test user registration, duplicate prevention, and login flow via REST API."""
     import uuid
     test_email = f"auth_test_{uuid.uuid4().hex[:8]}@codemind.dev"
@@ -101,7 +101,7 @@ def test_register_duplicate_and_login_flow():
     assert logout_resp.status_code == 200
 
 
-def test_auth_validation_errors():
+def test_auth_validation_errors(client: TestClient):
     """Test short password validation and invalid email rejection."""
     short_pwd_resp = client.post("/api/v1/auth/register", json={
         "email": "valid@email.com",
@@ -114,3 +114,32 @@ def test_auth_validation_errors():
         "password": "ValidPassword123!"
     })
     assert bad_email_resp.status_code == 422
+
+
+def test_login_database_error_graceful_handling(client: TestClient, monkeypatch):
+    """
+    Regression test: Database operational errors during login must return a user-friendly
+    503 error without unhandled 500 crashes and without leaking credentials in logs.
+    """
+    from sqlalchemy.exc import OperationalError
+    from unittest.mock import MagicMock
+
+    def mock_query_failure(*args, **kwargs):
+        raise OperationalError("SELECT 1", {}, Exception("Connection refused"))
+
+    from backend.app.models.user import User
+    # Mock db.query to simulate database connection loss during login
+    from backend.app.api.routes.auth import get_db
+
+    # Trigger login when DB query raises OperationalError
+    with monkeypatch.context() as m:
+        m.setattr("sqlalchemy.orm.Session.query", mock_query_failure)
+        resp = client.post("/api/v1/auth/login", json={
+            "email": "test@example.com",
+            "password": "SomePassword123!"
+        })
+        # Must return 503 Service Unavailable with user-friendly message, not 500
+        assert resp.status_code == 503
+        assert "temporarily unavailable" in resp.json()["detail"].lower()
+
+

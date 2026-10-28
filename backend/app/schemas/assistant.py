@@ -32,6 +32,7 @@ class AssistantQueryResponse(BaseModel):
     related_components: List[Dict[str, Any]] = []
     facts: Dict[str, int] = {}
     risk_callout: Dict[str, Any] = {}
+    diagnostics: Optional[Dict[str, Any]] = None
     llm_configured: bool
     retrieval_strategy: str = "hybrid"
     status: str = "success"

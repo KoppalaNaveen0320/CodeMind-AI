@@ -1,20 +1,24 @@
-version: "3.8"
-
 services:
   db:
     image: pgvector/pgvector:pg16
     container_name: codemind-postgres
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       POSTGRES_DB: ${POSTGRES_DB:-codemind_db}
-    ports:
-      - "5432:5432"
+    # Security: Database port is not publicly bound to 0.0.0.0 in production.
+    # For local DB administration from host, bind to loopback only if needed:
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d codemind_db"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,20 +37,26 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       APP_NAME: "CodeMind AI"
       APP_ENV: production
       DEBUG: "false"
       APP_PORT: 8000
       REQUIRE_AUTH: "true"
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-codemind_db}
-      SECRET_KEY: ${SECRET_KEY:-change-this-in-production-env-to-32-chars!}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-codemind_db}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set to a cryptographically secure string of at least 32 characters in .env}
       AI_PROVIDER: ollama
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       LLM_PROVIDER: ollama
-      LLM_MODEL: qwen2.5:3b
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
       EMBEDDING_PROVIDER: ollama
-      EMBEDDING_MODEL: nomic-embed-text
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       EMBEDDING_DIMENSION: 768
       RATE_LIMIT_ENABLED: "true"
     extra_hosts:
@@ -54,6 +64,9 @@ services:
     volumes:
       - uploaded_repos:/app/storage/uploaded_repos
       - app_data:/app/backend/data
+    command: >
+      sh -c "alembic -c /app/alembic.ini upgrade head &&
+             uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 30s
