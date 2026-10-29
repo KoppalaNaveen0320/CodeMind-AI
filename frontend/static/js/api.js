@@ -1131,6 +1131,15 @@ async function hydrateRepositoriesView() {
   }
 }
 
+function cleanEvidenceSnippet(ev) {
+  if (!ev) return '';
+  let str = String(ev).trim();
+  if (str.startsWith('Found in ')) {
+    str = str.substring(9).trim();
+  }
+  return str;
+}
+
 function renderTechStackCell(repo) {
   const ts = repo.tech_stack || {};
   const fe = ts.frontend || [];
@@ -1298,25 +1307,38 @@ window.openTechStackModal = async function(repoId) {
               const confPercent = typeof it.confidence === 'number'
                 ? Math.round(it.confidence * 100)
                 : (it.confidence === 'high' ? 95 : (it.confidence === 'medium' ? 80 : 65));
-              const evidenceList = Array.isArray(it.evidence) ? it.evidence : (it.evidence_file ? [it.evidence_file] : []);
+              const isHigh = confPercent >= 85;
+              const rawEvidence = Array.isArray(it.evidence) ? it.evidence : (it.evidence_file ? [it.evidence_file] : []);
               return `
               <div class="tech-evidence-card">
-                <div class="tech-card-top">
-                  <span class="tech-pill ${catClass}">${escapeHtml(it.name)}</span>
-                  ${it.type ? `<small style="font-size:8px; color:var(--muted); text-transform:uppercase;">${escapeHtml(it.type)}</small>` : ''}
-                  ${it.version ? `<code class="tech-version-tag">${escapeHtml(it.version)}</code>` : ''}
-                  <span class="tech-confidence-badge" title="Confidence: ${confPercent}%">
-                    ${confPercent}% verified
-                  </span>
-                </div>
-                <div class="tech-card-meta">
-                  <span class="tech-cat-label">${escapeHtml(it.category || 'technology')}</span>
-                  ${evidenceList.length > 0 ? `
-                    <span class="tech-evidence-source" title="Evidence: ${escapeHtml(evidenceList.join('; '))}">
-                      <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                      <code>${escapeHtml(evidenceList[0])}</code>${evidenceList.length > 1 ? ` <span style="color:var(--muted); font-size:8px;">+${evidenceList.length - 1}</span>` : ''}
+                <div class="tech-card-header-row">
+                  <div class="tech-card-identity">
+                    <span class="tech-card-name ${catClass}">${escapeHtml(it.name)}</span>
+                    ${it.type ? `<span class="tech-type-pill">${escapeHtml(it.type.toUpperCase())}</span>` : ''}
+                    ${it.version ? `<code class="tech-version-pill">${escapeHtml(it.version)}</code>` : ''}
+                  </div>
+                  <div class="tech-card-confidence">
+                    <span class="tech-confidence-badge ${isHigh ? 'conf-high' : 'conf-med'}" title="Confidence: ${confPercent}%">
+                      <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" focusable="false"><polyline points="20 6 9 17 4 12"/></svg>
+                      ${confPercent}% verified
                     </span>
-                  ` : ''}
+                  </div>
+                </div>
+                <div class="tech-card-evidence">
+                  ${rawEvidence.length > 0 ? `
+                    <span class="tech-evidence-icon-label">
+                      <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      Evidence:
+                    </span>
+                    <div class="tech-evidence-tags">
+                      ${rawEvidence.map(e => `<code class="tech-evidence-path" title="${escapeHtml(e)}">${escapeHtml(cleanEvidenceSnippet(e))}</code>`).join('')}
+                    </div>
+                  ` : `
+                    <span class="tech-evidence-inferred">
+                      <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                      Detected from repository source file extensions
+                    </span>
+                  `}
                 </div>
               </div>
             `;
@@ -1342,7 +1364,7 @@ window.openTechStackModal = async function(repoId) {
 
     if (languages.length > 0) {
       modalHtml += `
-        <div class="tech-modal-languages">
+        <div class="tech-modal-languages" style="margin-top: 16px;">
           <strong>Languages Detected:</strong>
           <div class="tech-badges-wrap">
             ${languages.map(l => `<span class="tech-pill tech-frontend">${escapeHtml(l)}</span>`).join('')}
@@ -1357,6 +1379,8 @@ window.openTechStackModal = async function(repoId) {
   if (modal) {
     modal.classList.remove('hidden');
     document.body.classList.add('modal-open');
+    const closeBtn = modal.querySelector('.modal-close-btn');
+    if (closeBtn) closeBtn.focus();
   }
 };
 
@@ -1368,10 +1392,77 @@ window.closeTechStackModal = function() {
   }
 };
 
-// Global escape key listener to dismiss tech stack modal
+window.openActiveSessionsModal = async function() {
+  let modal = document.getElementById('active-sessions-modal');
+  if (!modal) {
+    const layer = document.createElement('div');
+    layer.className = 'modal-layer hidden';
+    layer.id = 'active-sessions-modal';
+    layer.setAttribute('role', 'dialog');
+    layer.setAttribute('aria-modal', 'true');
+    layer.setAttribute('aria-labelledby', 'active-sessions-modal-title');
+    layer.innerHTML = `
+      <div class="modal-backdrop" id="active-sessions-backdrop-close" onclick="closeActiveSessionsModal()" aria-label="Close active sessions dialog"></div>
+      <section class="setup-modal active-sessions-modal">
+        <div class="modal-head">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="repo-logo" style="background: rgba(99, 102, 241, 0.12); color: #4f46e5; width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center;">
+              <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+            </span>
+            <div>
+              <strong id="active-sessions-modal-title">Active Sessions</strong>
+              <small id="active-sessions-modal-subtitle">Persistent session tracking across devices, browsers, and IP addresses</small>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-revoke-other-sessions" style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px;">
+              <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+              <span>Revoke other sessions</span>
+            </button>
+            <button type="button" class="icon-btn modal-close-btn" id="btn-close-active-sessions-modal" onclick="closeActiveSessionsModal()" aria-label="Close modal">
+              <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
+        </div>
+        <div class="active-sessions-modal-body" id="active-sessions-list-container">
+          <div style="padding: 24px; text-align: center; color: var(--muted); font-size: 11.5px;">Loading active sessions...</div>
+        </div>
+      </section>
+    `;
+    document.body.appendChild(layer);
+    modal = layer;
+  }
+
+  modal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  if (typeof window.loadActiveSessions === 'function') {
+    await window.loadActiveSessions();
+  }
+  const closeBtn = document.getElementById('btn-close-active-sessions-modal') || modal.querySelector('.modal-close-btn');
+  if (closeBtn) closeBtn.focus();
+};
+
+window.closeActiveSessionsModal = function() {
+  const modal = document.getElementById('active-sessions-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    document.body.classList.remove('modal-open');
+  }
+  const triggerBtn = document.getElementById('btn-toggle-active-sessions');
+  if (triggerBtn) triggerBtn.focus();
+};
+
+// Global escape key listener to dismiss modals
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    window.closeTechStackModal();
+    const techModal = document.getElementById('tech-stack-details-modal');
+    if (techModal && !techModal.classList.contains('hidden')) {
+      window.closeTechStackModal();
+    }
+    const sessionModal = document.getElementById('active-sessions-modal');
+    if (sessionModal && !sessionModal.classList.contains('hidden')) {
+      window.closeActiveSessionsModal();
+    }
   }
 });
 
@@ -8049,36 +8140,16 @@ async function hydrateSettingsView() {
                 <small style="color: var(--muted); font-size: 10px; margin-top: 6px; display: block;">Default is 30 minutes. Absolute session lifetime is enforced securely by the server.</small>
               </div>
 
-              <!-- Active Sessions Toggle Row -->
+              <!-- Active Sessions Action Row -->
               <div class="active-sessions-action-row" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
                 <div>
                   <strong style="font-size: 11.5px; display: block; color: var(--text);">Active Sessions</strong>
                   <small style="color: var(--muted); font-size: 10px;">Persistent session tracking across devices, browsers, and IP addresses</small>
                 </div>
-                <button type="button" class="btn btn-secondary" id="btn-toggle-active-sessions" aria-expanded="false" aria-controls="active-sessions-expandable-wrap" style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 6px 12px; cursor: pointer;">
+                <button type="button" class="btn btn-secondary" id="btn-toggle-active-sessions" onclick="openActiveSessionsModal()" aria-haspopup="dialog" aria-controls="active-sessions-modal" style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 6px 12px; cursor: pointer;">
                   <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
                   <span>Active Sessions</span>
-                  <svg class="icon chevron-icon" id="active-sessions-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s ease;" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section: Active Sessions (Collapsed & Hidden by default) -->
-          <div id="active-sessions-expandable-wrap" style="display: none; max-width: 680px; margin-top: 14px;">
-            <div class="session-security-card">
-              <div class="session-security-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <div>
-                  <h3 class="session-security-title">Connected Devices & Sessions</h3>
-                  <p class="session-security-subtitle">Currently active and historical sign-ins for this account</p>
-                </div>
-                <button type="button" class="btn btn-secondary btn-sm" id="btn-revoke-other-sessions" style="display: inline-flex; align-items: center; gap: 5px;">
-                  <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
-                  <span>Revoke other sessions</span>
-                </button>
-              </div>
-              <div id="active-sessions-list-container" class="session-cards-list">
-                <div style="padding: 16px; text-align: center; color: var(--muted); font-size: 11px;">Loading sessions...</div>
               </div>
             </div>
           </div>
@@ -8150,10 +8221,12 @@ async function hydrateSettingsView() {
                 timeoutStatusMsg.style.display = 'inline';
                 setTimeout(() => { timeoutStatusMsg.style.display = 'none'; }, 3500);
               }
-              // Refresh active sessions list if visible to reflect updated expiration
-              const expWrap = document.getElementById('active-sessions-expandable-wrap');
-              if (expWrap && expWrap.style.display !== 'none') {
-                await loadActiveSessions();
+              // Refresh active sessions list if modal is open to reflect updated expiration
+              const sessModal = document.getElementById('active-sessions-modal');
+              if (sessModal && !sessModal.classList.contains('hidden')) {
+                if (typeof window.loadActiveSessions === 'function') {
+                  await window.loadActiveSessions();
+                }
               }
             } catch (err) {
               alert(`Failed to save session timeout: ${err.message}`);
@@ -8164,39 +8237,58 @@ async function hydrateSettingsView() {
           });
         }
 
-        // --- Active Sessions Toggle, Loader & Action Handlers ---
+        // --- Active Sessions Modal Trigger, Loader & Revocation Handlers ---
         const toggleBtn = document.getElementById('btn-toggle-active-sessions');
-        const expandableWrap = document.getElementById('active-sessions-expandable-wrap');
-        const chevron = document.getElementById('active-sessions-chevron');
-        const sessionsContainer = document.getElementById('active-sessions-list-container');
-        const revokeOthersBtn = document.getElementById('btn-revoke-other-sessions');
-
-        if (toggleBtn && expandableWrap) {
-          toggleBtn.addEventListener('click', async () => {
-            const isCurrentlyExpanded = expandableWrap.style.display !== 'none';
-            if (isCurrentlyExpanded) {
-              expandableWrap.style.display = 'none';
-              toggleBtn.setAttribute('aria-expanded', 'false');
-              if (chevron) chevron.style.transform = 'rotate(0deg)';
-            } else {
-              expandableWrap.style.display = 'block';
-              toggleBtn.setAttribute('aria-expanded', 'true');
-              if (chevron) chevron.style.transform = 'rotate(180deg)';
-              await loadActiveSessions();
+        if (toggleBtn) {
+          toggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof window.openActiveSessionsModal === 'function') {
+              window.openActiveSessionsModal();
             }
           });
         }
 
-        async function loadActiveSessions() {
+        window.loadActiveSessions = async function loadActiveSessions() {
+          const sessionsContainer = document.getElementById('active-sessions-list-container');
+          const revokeOthersBtn = document.getElementById('btn-revoke-other-sessions');
           if (!sessionsContainer) return;
-          sessionsContainer.innerHTML = '<div style="padding: 16px; text-align: center; color: var(--muted); font-size: 11px;">Loading sessions...</div>';
+
+          sessionsContainer.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--muted); font-size: 11.5px;">Loading sessions...</div>';
+
+          // Bind Revoke Other Sessions button once
+          if (revokeOthersBtn && !revokeOthersBtn.dataset.bound) {
+            revokeOthersBtn.dataset.bound = 'true';
+            revokeOthersBtn.addEventListener('click', async (e) => {
+              e.preventDefault();
+              const confirmed = confirm('Are you sure you want to revoke all other active sessions across other devices and browsers?');
+              if (!confirmed) return;
+
+              revokeOthersBtn.disabled = true;
+              revokeOthersBtn.innerHTML = `<svg class="icon animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> Revoking...`;
+
+              try {
+                const res = await CodeMindAPI.revokeOtherSessions();
+                alert(res.message || 'Other active sessions revoked successfully.');
+                await window.loadActiveSessions();
+              } catch (err) {
+                alert(`Failed to revoke other sessions: ${err.message}`);
+              } finally {
+                revokeOthersBtn.disabled = false;
+                revokeOthersBtn.innerHTML = `
+                  <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                  <span>Revoke other sessions</span>
+                `;
+              }
+            });
+          }
+
           try {
             const data = await CodeMindAPI.getSessions();
             const sessions = data.sessions || [];
 
             if (sessions.length === 0) {
               sessionsContainer.innerHTML = `
-                <div class="list-empty" style="padding: 24px;">
+                <div class="list-empty" style="padding: 28px;">
                   <strong>No session history found</strong>
                   <p>Session records will appear here upon login.</p>
                 </div>
@@ -8290,7 +8382,7 @@ async function hydrateSettingsView() {
                     sessionStorage.clear();
                     window.location.href = '/login?expired=true';
                   } else {
-                    await loadActiveSessions();
+                    await window.loadActiveSessions();
                   }
                 } catch (err) {
                   alert(`Failed to revoke session: ${err.message}`);
@@ -8308,33 +8400,9 @@ async function hydrateSettingsView() {
               </div>
             `;
           }
-        }
+        };
 
-        if (revokeOthersBtn) {
-          revokeOthersBtn.addEventListener('click', async () => {
-            const confirmed = confirm('Are you sure you want to revoke all other active sessions across other devices and browsers?');
-            if (!confirmed) return;
-
-            revokeOthersBtn.disabled = true;
-            revokeOthersBtn.innerHTML = `<svg class="icon animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> Revoking...`;
-
-            try {
-              const res = await CodeMindAPI.revokeOtherSessions();
-              alert(res.message || 'Other active sessions revoked successfully.');
-              await loadActiveSessions();
-            } catch (err) {
-              alert(`Failed to revoke other sessions: ${err.message}`);
-            } finally {
-              revokeOthersBtn.disabled = false;
-              revokeOthersBtn.innerHTML = `
-                <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
-                <span>Revoke other sessions</span>
-              `;
-            }
-          });
-        }
-
-        // Active Sessions section is collapsed by default and loaded on-demand when expanded.
+        // Active Sessions modal is closed by default and opened on-demand via openActiveSessionsModal()
 
       } else {
         // AI & Embeddings tab

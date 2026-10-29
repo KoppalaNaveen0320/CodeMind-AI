@@ -80,28 +80,34 @@ def test_area2_repositories_page_tech_stack_pills_and_table_layout():
     assert ".repo-stat-dot" in css
 
 
-def test_area3_settings_page_active_sessions_collapsed_and_toggleable():
-    """Verify Settings page Active Sessions is collapsed by default and toggleable via button."""
+def test_area3_settings_page_active_sessions_modal_dialog():
+    """Verify Settings page Active Sessions opens in a centered modal dialog with full accessibility and revocation."""
     js_path = BASE_DIR / "frontend" / "static" / "js" / "api.js"
     js = js_path.read_text(encoding="utf-8")
+    settings_tmpl = (BASE_DIR / "frontend" / "templates" / "settings.html").read_text(encoding="utf-8")
 
-    # Expandable container starts hidden with display: none
-    assert 'id="active-sessions-expandable-wrap" style="display: none;' in js
+    # Centered modal in settings.html template
+    assert 'id="active-sessions-modal"' in settings_tmpl
+    assert 'class="modal-layer hidden"' in settings_tmpl
+    assert 'role="dialog"' in settings_tmpl
+    assert 'aria-modal="true"' in settings_tmpl
+    assert 'active-sessions-backdrop-close' in settings_tmpl
+    assert 'btn-close-active-sessions-modal' in settings_tmpl
+    assert 'id="active-sessions-list-container"' in settings_tmpl
 
-    # Toggle button with aria-expanded="false" and icon
+    # Button triggers modal dialog on same page
     assert 'id="btn-toggle-active-sessions"' in js
-    assert 'aria-expanded="false"' in js
-    assert 'aria-controls="active-sessions-expandable-wrap"' in js
+    assert 'openActiveSessionsModal()' in js
+    assert 'aria-haspopup="dialog"' in js
+    assert 'aria-controls="active-sessions-modal"' in js
 
-    # Initial load of active sessions on page load is removed
-    assert "loadActiveSessions();\n\n      } else {" not in js
-    assert "Active Sessions section is collapsed by default and loaded on-demand" in js
-
-    # Toggle event listener controls display, aria-expanded, and lazy loading
-    assert "toggleBtn.addEventListener('click'" in js
-    assert "toggleBtn.setAttribute('aria-expanded', 'true')" in js
-    assert "toggleBtn.setAttribute('aria-expanded', 'false')" in js
-    assert "await loadActiveSessions()" in js
+    # Modal opening/closing functions and ESC listener
+    assert "window.openActiveSessionsModal" in js
+    assert "window.closeActiveSessionsModal" in js
+    assert "window.loadActiveSessions" in js
+    assert "document.body.classList.add('modal-open')" in js
+    assert "document.body.classList.remove('modal-open')" in js
+    assert "e.key === 'Escape'" in js
 
     # Session card fields in DOM generator
     assert "session-badge-current" in js
@@ -116,11 +122,12 @@ def test_area3_settings_page_active_sessions_collapsed_and_toggleable():
     assert "btn-revoke-session" in js
     assert "btn-revoke-other-sessions" in js
 
-    # CSS for session security card and badges
+    # CSS for session modal and badges
     css_path = BASE_DIR / "frontend" / "static" / "css" / "styles.css"
     css = css_path.read_text(encoding="utf-8")
 
     assert ".session-security-card" in css
+    assert ".active-sessions-modal" in css
     assert ".session-card-item" in css
     assert ".session-card-item.is-current" in css
     assert ".session-badge-current" in css
@@ -128,3 +135,47 @@ def test_area3_settings_page_active_sessions_collapsed_and_toggleable():
     assert ".session-badge-expired" in css
     assert ".session-badge-revoked" in css
     assert ".session-details-grid" in css
+
+
+def test_tech_stack_modal_ui_styling_and_card_layout():
+    """Verify Technology Stack details modal has spacious card-based layout with clean category sections."""
+    css_path = BASE_DIR / "frontend" / "static" / "css" / "styles.css"
+    css = css_path.read_text(encoding="utf-8")
+
+    # Tech stack modal layout classes
+    assert ".modal-layer .tech-details-modal" in css
+    assert ".tech-modal-body" in css
+    assert ".tech-modal-grid" in css
+    assert ".tech-modal-section" in css
+    assert ".tech-modal-sec-head" in css
+    assert ".tech-count-badge" in css
+    assert ".tech-modal-sec-items" in css
+    assert ".tech-evidence-card" in css
+    assert ".tech-card-header-row" in css
+    assert ".tech-card-identity" in css
+    assert ".tech-card-name" in css
+    assert ".tech-card-name.tech-frontend" in css
+    assert ".tech-card-name.tech-backend" in css
+    assert ".tech-card-name.tech-db" in css
+    assert ".tech-card-name.tech-infra" in css
+    assert ".tech-type-pill" in css
+    assert ".tech-version-pill" in css
+    assert ".tech-confidence-badge" in css
+    assert ".tech-confidence-badge.conf-high" in css
+    assert ".tech-card-evidence" in css
+    assert ".tech-evidence-tags" in css
+    assert ".tech-evidence-path" in css
+
+    # JS modal builder
+    js_path = BASE_DIR / "frontend" / "static" / "js" / "api.js"
+    js = js_path.read_text(encoding="utf-8")
+    assert "window.openTechStackModal" in js
+    assert "window.closeTechStackModal" in js
+    assert "cleanEvidenceSnippet" in js
+    assert "tech-evidence-card" in js
+
+    # Repositories template sizing
+    repo_tmpl = (BASE_DIR / "frontend" / "templates" / "repositories.html").read_text(encoding="utf-8")
+    assert 'class="setup-modal tech-details-modal"' in repo_tmpl
+    assert 'max-height: min(800px, calc(100vh - 48px));' in repo_tmpl
+
