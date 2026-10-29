@@ -1396,6 +1396,15 @@ function renderTechStackOverview(techStack, repoId = null) {
     { key: 'infrastructure', name: 'DevOps & Infra', code: 'INFRA', badgeClass: 'badge-cat-infra', itemBadgeClass: 'badge-tech-infra', emptyText: 'No container or deployment manifests detected' },
   ];
 
+  function cleanEvidenceSnippet(ev) {
+    if (!ev) return '';
+    let str = String(ev).trim();
+    if (str.startsWith('Found in ')) {
+      str = str.substring(9).trim();
+    }
+    return str;
+  }
+
   return `
     <div class="tech-overview-grid">
       ${categories.map(cat => {
@@ -1416,6 +1425,9 @@ function renderTechStackOverview(techStack, repoId = null) {
                 const confColor = isHigh ? '#059669' : '#d97706';
                 const confBg = isHigh ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)';
                 const confText = typeof confRaw === 'string' ? confRaw.toUpperCase() : (isHigh ? 'HIGH' : 'MEDIUM');
+                const rawEvidence = item.evidence || [];
+                const firstEv = rawEvidence.length > 0 ? cleanEvidenceSnippet(rawEvidence[0]) : '';
+                const fullTooltip = rawEvidence.map(cleanEvidenceSnippet).join('; ');
                 return `
                   <div class="tech-overview-item">
                     <div class="tech-item-row">
@@ -1423,10 +1435,10 @@ function renderTechStackOverview(techStack, repoId = null) {
                       ${item.type ? `<small style="font-size:7.5px; color:var(--muted); text-transform:uppercase;">${escapeHtml(item.type)}</small>` : ''}
                       ${confRaw !== undefined && confRaw !== null ? `<span style="font-size:7px; margin-left:auto; padding:1px 5px; border-radius:10px; background:${confBg}; color:${confColor}; font-weight:600;">${escapeHtml(confText)}</span>` : ''}
                     </div>
-                    ${item.evidence && item.evidence.length > 0 ? `
-                      <div class="tech-evidence-line" title="${escapeHtml(item.evidence.join('; '))}">
+                    ${firstEv ? `
+                      <div class="tech-evidence-line" title="Evidence: ${escapeHtml(fullTooltip)}">
                         <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                        <span>Evidence: <code>${escapeHtml(item.evidence[0])}</code>${item.evidence.length > 1 ? ` <span style="color:var(--muted); font-size:7px;">+${item.evidence.length - 1}</span>` : ''}</span>
+                        <span>Evidence: <code>${escapeHtml(firstEv)}</code>${rawEvidence.length > 1 ? ` <span style="color:var(--muted); font-size:7px;">+${rawEvidence.length - 1}</span>` : ''}</span>
                       </div>
                     ` : ''}
                   </div>
@@ -8036,23 +8048,38 @@ async function hydrateSettingsView() {
                 </div>
                 <small style="color: var(--muted); font-size: 10px; margin-top: 6px; display: block;">Default is 30 minutes. Absolute session lifetime is enforced securely by the server.</small>
               </div>
+
+              <!-- Active Sessions Toggle Row -->
+              <div class="active-sessions-action-row" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                <div>
+                  <strong style="font-size: 11.5px; display: block; color: var(--text);">Active Sessions</strong>
+                  <small style="color: var(--muted); font-size: 10px;">Persistent session tracking across devices, browsers, and IP addresses</small>
+                </div>
+                <button type="button" class="btn btn-secondary" id="btn-toggle-active-sessions" aria-expanded="false" aria-controls="active-sessions-expandable-wrap" style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 6px 12px; cursor: pointer;">
+                  <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                  <span>Active Sessions</span>
+                  <svg class="icon chevron-icon" id="active-sessions-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s ease;" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- Section: Active Sessions -->
-          <div class="session-security-card" style="max-width: 680px; margin-top: 24px;">
-            <div class="session-security-header">
-              <div>
-                <h3 class="session-security-title">Active Sessions</h3>
-                <p class="session-security-subtitle">Persistent session tracking across devices, browsers, and IP addresses</p>
+          <!-- Section: Active Sessions (Collapsed & Hidden by default) -->
+          <div id="active-sessions-expandable-wrap" style="display: none; max-width: 680px; margin-top: 14px;">
+            <div class="session-security-card">
+              <div class="session-security-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div>
+                  <h3 class="session-security-title">Connected Devices & Sessions</h3>
+                  <p class="session-security-subtitle">Currently active and historical sign-ins for this account</p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-revoke-other-sessions" style="display: inline-flex; align-items: center; gap: 5px;">
+                  <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                  <span>Revoke other sessions</span>
+                </button>
               </div>
-              <button type="button" class="btn btn-secondary btn-sm" id="btn-revoke-other-sessions" style="display: inline-flex; align-items: center; gap: 5px;">
-                <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
-                <span>Revoke other sessions</span>
-              </button>
-            </div>
-            <div id="active-sessions-list-container" class="session-cards-list">
-              <div style="padding: 16px; text-align: center; color: var(--muted); font-size: 11px;">Loading sessions...</div>
+              <div id="active-sessions-list-container" class="session-cards-list">
+                <div style="padding: 16px; text-align: center; color: var(--muted); font-size: 11px;">Loading sessions...</div>
+              </div>
             </div>
           </div>
         `;
@@ -8123,8 +8150,11 @@ async function hydrateSettingsView() {
                 timeoutStatusMsg.style.display = 'inline';
                 setTimeout(() => { timeoutStatusMsg.style.display = 'none'; }, 3500);
               }
-              // Refresh active sessions list to reflect updated expiration
-              await loadActiveSessions();
+              // Refresh active sessions list if visible to reflect updated expiration
+              const expWrap = document.getElementById('active-sessions-expandable-wrap');
+              if (expWrap && expWrap.style.display !== 'none') {
+                await loadActiveSessions();
+              }
             } catch (err) {
               alert(`Failed to save session timeout: ${err.message}`);
             } finally {
@@ -8134,12 +8164,32 @@ async function hydrateSettingsView() {
           });
         }
 
-        // --- Active Sessions Loader & Action Handlers ---
+        // --- Active Sessions Toggle, Loader & Action Handlers ---
+        const toggleBtn = document.getElementById('btn-toggle-active-sessions');
+        const expandableWrap = document.getElementById('active-sessions-expandable-wrap');
+        const chevron = document.getElementById('active-sessions-chevron');
         const sessionsContainer = document.getElementById('active-sessions-list-container');
         const revokeOthersBtn = document.getElementById('btn-revoke-other-sessions');
 
+        if (toggleBtn && expandableWrap) {
+          toggleBtn.addEventListener('click', async () => {
+            const isCurrentlyExpanded = expandableWrap.style.display !== 'none';
+            if (isCurrentlyExpanded) {
+              expandableWrap.style.display = 'none';
+              toggleBtn.setAttribute('aria-expanded', 'false');
+              if (chevron) chevron.style.transform = 'rotate(0deg)';
+            } else {
+              expandableWrap.style.display = 'block';
+              toggleBtn.setAttribute('aria-expanded', 'true');
+              if (chevron) chevron.style.transform = 'rotate(180deg)';
+              await loadActiveSessions();
+            }
+          });
+        }
+
         async function loadActiveSessions() {
           if (!sessionsContainer) return;
+          sessionsContainer.innerHTML = '<div style="padding: 16px; text-align: center; color: var(--muted); font-size: 11px;">Loading sessions...</div>';
           try {
             const data = await CodeMindAPI.getSessions();
             const sessions = data.sessions || [];
@@ -8284,8 +8334,7 @@ async function hydrateSettingsView() {
           });
         }
 
-        // Initial sessions load
-        loadActiveSessions();
+        // Active Sessions section is collapsed by default and loaded on-demand when expanded.
 
       } else {
         // AI & Embeddings tab
