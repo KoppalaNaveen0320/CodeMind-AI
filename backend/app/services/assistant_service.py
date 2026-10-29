@@ -599,10 +599,40 @@ class AssistantService:
         }
         pascal_symbols = re.findall(r'\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b', question)
         has_custom_symbol = any(sym.lower() not in framework_classes for sym in pascal_symbols)
+        has_backticked_identifier = bool(re.search(r'`[a-zA-Z_][a-zA-Z0-9_.:]*(?:\(\))?`', question))
+        has_named_code_ref = bool(re.search(r'\b(?:this|the)\s+[a-zA-Z0-9_]+\s+(?:function|method|class|variable|endpoint|route|component|screen|service|handler|file)\b', q_lower))
+        has_what_does_code_ref = bool(re.search(r'\bwhat does (?:the\s+)?[a-zA-Z0-9_]+\s+(?:do|function|method)\b', q_lower))
+        has_function_call_syntax = bool(re.search(r'\b[a-zA-Z_][a-zA-Z0-9_]+\s*\(\)', question))
+        has_main_function_ref = bool(re.search(r'\b(?:main\s+function|main\(\))\b', q_lower))
+        has_overview_phrasing = bool(re.search(
+            r'\b(?:explain|overview|about|describe|understand|walk through|summary of|summarize|tell me about)\s+(?:this\s+)?(?:repository|codebase|project|repo|application|app)\b',
+            q_lower
+        ) or re.search(
+            r'\b(?:what does this (?:repository|codebase|project|application|app) do|how does this (?:repository|codebase|project|application|app) work|what is this (?:repository|codebase|project|application|app))\b',
+            q_lower
+        ) or re.search(
+            r'\b(?:give me (?:a |an )?(?:detailed |high level )?overview of (?:the |this )?(?:current )?(?:project|repository|codebase|repo|application|app))\b',
+            q_lower
+        ))
+        has_feature_existence_ref = bool(re.search(
+            r'\b(?:is|does|are|has)\s+(?:there\s+)?([a-zA-Z0-9_\-\s]+?)\s+(?:implemented|supported|used|configured|present|available|enabled)\s+(?:in|for|on)\s+(?:this\s+)?(?:repo|repository|codebase|project|application|app)\b',
+            q_lower
+        ) or re.search(
+            r'\bis\s+([a-zA-Z0-9_\-]+)\s+implemented\s+in\s+this\s+(?:repository|codebase|project|repo|application|app)\b',
+            q_lower
+        ))
+
         is_explicit_repo_ref = (
             has_custom_component_ref
             or has_repo_filepath
             or has_custom_symbol
+            or has_backticked_identifier
+            or has_named_code_ref
+            or has_what_does_code_ref
+            or has_function_call_syntax
+            or has_main_function_ref
+            or has_overview_phrasing
+            or has_feature_existence_ref
             or bool(re.search(
                 r'\b(this (?:repo|codebase|project|repository|app|application)|our (?:code|repo|project|codebase|app|application)|in (?:the|this) (?:repo|codebase|project|application|code)|here in (?:the|this)|in our codebase|codemind|indexed|source code|in this file|which file|what file|where in (?:the|this)|where is (?:the|this))\b',
                 q_lower
@@ -724,11 +754,28 @@ class AssistantService:
         if is_general_prog and not is_explicit_repo_ref:
             return ["GENERAL_PROGRAMMING"]
 
+        if has_overview_phrasing:
+            if "PROJECT_OVERVIEW" not in intents:
+                intents.append("PROJECT_OVERVIEW")
+            if "ARCHITECTURE" not in intents:
+                intents.append("ARCHITECTURE")
+
         if re.search(r'\b(architecture|structure|components?|overview|design|layers?|high level|project structure|main components|how is .+ organized|codebase organization|system design)\b', q_lower):
-            intents.append("ARCHITECTURE")
+            if "ARCHITECTURE" not in intents:
+                intents.append("ARCHITECTURE")
 
         if re.search(r'\b(api|apis|route|routes|routing|router|endpoints?|request flow|requests?|controllers?|handlers?|blueprints?|urls?|handle (?:api )?requests?)\b', q_lower):
             intents.append("API_ROUTES")
+
+        if re.search(r'\b(trace|request flow|flow|api request|from the entry point|business logic to database|call chain|pipeline|end to end)\b', q_lower):
+            if "REQUEST_FLOW" not in intents:
+                intents.append("REQUEST_FLOW")
+            if "API_ROUTES" not in intents:
+                intents.append("API_ROUTES")
+
+        if has_feature_existence_ref or re.search(r'\b(?:is|does)\s+([a-zA-Z0-9_\-]+)\s+implemented\b', q_lower):
+            if "FEATURE_AUDIT" not in intents:
+                intents.append("FEATURE_AUDIT")
 
         if re.search(r'\b(auth|authentication|authorization|login|logout|sign in|sign up|jwt|token|access token|bearer|permission|permissions|roles?|password|credential|credentials|session|sessions|oauth|otp|recovery|verification|verify|reset password|account recovery)\b', q_lower):
             intents.append("AUTH")
@@ -1331,6 +1378,50 @@ class AssistantService:
             "ambiguous_candidates": ambiguous_candidates,
             "is_general_programming": False,
         }
+
+    @classmethod
+    def _get_best_chunk_for_file(
+        cls,
+        db: Session,
+        repository_id: int,
+        file_path: str,
+        preferred_symbol: Optional[str] = None,
+    ) -> Optional[CodeChunk]:
+        """
+        Retrieves the most informative chunk for a given file.
+        Prioritizes chunks with definitions, functions, or matching symbols over import-only headers.
+        """
+        chunks = (
+            db.query(CodeChunk)
+            .filter(
+                CodeChunk.repository_id == repository_id,
+                CodeChunk.file_path == file_path,
+            )
+            .order_by(CodeChunk.chunk_index.asc())
+            .all()
+        )
+        if not chunks:
+            return None
+        if len(chunks) == 1:
+            return chunks[0]
+
+        if preferred_symbol:
+            for c in chunks:
+                if c.code_symbol and preferred_symbol.lower() in c.code_symbol.lower():
+                    return c
+                if preferred_symbol.lower() in c.chunk_text.lower():
+                    return c
+
+        symbol_chunks = [c for c in chunks if c.code_symbol]
+        if symbol_chunks:
+            return symbol_chunks[0]
+
+        for c in chunks:
+            txt = c.chunk_text
+            if any(k in txt for k in ["def ", "class ", "async def ", "function ", "interface ", "struct ", "void main", "Widget build"]):
+                return c
+
+        return chunks[0]
 
     @classmethod
     def _enrich_multi_layer_retrieval(
@@ -2127,7 +2218,7 @@ class AssistantService:
         if arch is None:
             arch = ArchitectureAnalysisEngine.get_repository_architecture(db, repository_id)
 
-        is_broad_arch_query = bool(is_arch or ((is_routes or is_models or is_services or is_config or is_frontend) and not verified_explicit_files))
+        is_broad_arch_query = bool(is_arch or "PROJECT_OVERVIEW" in intents or ((is_routes or is_models or is_services or is_config or is_frontend) and not verified_explicit_files))
         if is_broad_arch_query:
             layer_specs = [
                 ("entry_point", None, "Entry points and application initialization", "Dedicated application entry point"),
@@ -2153,25 +2244,72 @@ class AssistantService:
                 else:
                     comps = arch.get_components_of_type(comp_type)
 
-                if comps and (comp_type, v_label) not in added_layer_keys:
+                clean_comps = [
+                    c for c in (comps or [])
+                    if not any(bad in c.file_path.lower() for bad in [".pbxproj", ".xcscheme", ".xcworkspace", ".plist", "pods/", "/build/", "/.gradle/", "/dist/"])
+                ]
+
+                # Fallback discovery across indexed files if arch returned no components or only build files
+                if not clean_comps:
+                    fb_patterns = []
+                    if comp_type == "entry_point":
+                        fb_patterns = ["%main.%", "%app.%", "%index.%", "%server.%", "%run.%", "%manage.py"]
+                    elif comp_type == "config":
+                        fb_patterns = ["%config%", "%settings%", "%requirements.txt", "%pubspec.yaml", "%package.json", "%pyproject.toml", "%docker-compose%"]
+                    elif comp_type == "api_route":
+                        fb_patterns = ["%route%", "%controller%", "%api%", "%screen%", "%pages/%", "%views/%"]
+                    elif comp_type == "service":
+                        fb_patterns = ["%service%", "%logic%", "%manager%", "%handler%", "%provider%", "%bloc/%", "%usecase%"]
+                    elif comp_type == "persistence":
+                        if sub_type == "model":
+                            fb_patterns = ["%model%", "%schema%", "%entity%", "%state%"]
+                        elif sub_type == "repository":
+                            fb_patterns = ["%repository%", "%repo/%", "%dao%"]
+                    elif comp_type == "frontend_ui":
+                        fb_patterns = ["%ui/%", "%components/%", "%templates/%", "%static/%"]
+                    elif comp_type == "background_job":
+                        fb_patterns = ["%worker%", "%task%", "%job%", "%celery%", "%cron%"]
+
+                    if fb_patterns:
+                        fb_files = (
+                            db.query(IndexedFile.path)
+                            .filter(
+                                IndexedFile.repository_id == repository_id,
+                                not_(IndexedFile.path.ilike("%.pbxproj%")),
+                                not_(IndexedFile.path.ilike("%.xcscheme%")),
+                                not_(IndexedFile.path.ilike("%pods/%")),
+                                not_(IndexedFile.path.ilike("%/build/%")),
+                                not_(IndexedFile.path.ilike("%/.gradle/%")),
+                                not_(IndexedFile.path.ilike("%tests/%")),
+                                not_(IndexedFile.path.ilike("%test/%")),
+                                or_(*[IndexedFile.path.ilike(p) for p in fb_patterns])
+                            )
+                            .limit(2)
+                            .all()
+                        )
+                        for f_row in fb_files:
+                            fp = f_row[0]
+                            chunk = cls._get_best_chunk_for_file(db, repository_id, fp)
+                            if chunk and chunk.file_path not in present_paths:
+                                additional_chunks.append(chunk)
+                                present_paths.add(chunk.file_path)
+                                if (comp_type, v_label) not in added_layer_keys:
+                                    added_layer_keys.add((comp_type, v_label))
+                                    if v_label not in verified_layers:
+                                        verified_layers.append(v_label)
+
+                if clean_comps and (comp_type, v_label) not in added_layer_keys:
                     added_layer_keys.add((comp_type, v_label))
                     if v_label not in verified_layers:
                         verified_layers.append(v_label)
                     # Pull chunks for up to 2 distinct files in this layer
-                    for c_comp in comps[:2]:
+                    for c_comp in clean_comps[:2]:
                         if c_comp.file_path not in present_paths:
-                            chunk = (
-                                db.query(CodeChunk)
-                                .filter(
-                                    CodeChunk.repository_id == repository_id,
-                                    CodeChunk.file_path == c_comp.file_path,
-                                )
-                                .first()
-                            )
+                            chunk = cls._get_best_chunk_for_file(db, repository_id, c_comp.file_path)
                             if chunk and chunk.file_path not in present_paths:
                                 additional_chunks.append(chunk)
                                 present_paths.add(chunk.file_path)
-                elif not comps and u_label and u_label not in unverified_layers:
+                elif not clean_comps and (comp_type, v_label) not in added_layer_keys and u_label and u_label not in unverified_layers:
                     unverified_layers.append(u_label)
 
             if is_arch:
@@ -2214,7 +2352,8 @@ class AssistantService:
             if repo_record_obj.full_name:
                 repo_name_tokens.update(re.findall(r"[a-zA-Z0-9]+", repo_record_obj.full_name.lower()))
 
-        candidate_idents = set(re.findall(r'`([a-zA-Z_][a-zA-Z0-9_.]*)`', question))
+        raw_idents = re.findall(r'`([a-zA-Z_][a-zA-Z0-9_.]*(?:\(\))?)`', question)
+        candidate_idents = set(m.rstrip('()') for m in raw_idents)
         if not candidate_idents:
             # Only consider tokens that resemble code identifiers (snake_case, dot.notation, or camelCase/PascalCase)
             # Never treat plain English words or repo names as code identifiers
@@ -2270,6 +2409,9 @@ class AssistantService:
                     verified_idents_info.append(f"- `{q_id_clean}`: VERIFIED {loc}")
 
             if absent_idents or verified_idents_info:
+                audit_meta["has_identifier_audit"] = True
+                audit_meta["absent_identifiers"] = absent_idents
+                audit_meta["verified_identifiers"] = verified_idents_info
                 audit_lines = ["VERIFIED IDENTIFIER AUDIT:"]
                 for ab in absent_idents:
                     audit_lines.append(f"- `{ab}`: UNVERIFIED / ABSENT in this repository's indexed source code. It does not exist as a parameter, function, or model field.")
@@ -2277,6 +2419,75 @@ class AssistantService:
                     audit_lines.append(v_info)
                 audit_lines.append("- Instructions: Strictly distinguish verified identifiers from absent/unverified identifiers. Explicitly state that absent identifiers do not exist in this repository.")
                 grounding_notes.append("\n".join(audit_lines))
+
+        # 5. General Feature Existence Audit
+        is_feature_query = "FEATURE_AUDIT" in intents or bool(re.search(r'\b(caching|rate\s*limiting|websockets?|payments?|oauth|redis|celery|background\s*tasks?|push\s*notifications?)\b', q_lower))
+        if is_feature_query and not is_auth and not is_hybrid_retrieval_query:
+            feat_match = re.search(r'\b(?:is|does|are|has)\s+(?:there\s+)?([a-zA-Z0-9_\-\s]{3,30}?)\s+(?:implemented|supported|used|configured|present|available|enabled)\b', q_lower)
+            if not feat_match:
+                feat_match = re.search(r'\b(?:does|do)\s+(?:the|this)\s+(?:repo|codebase|project|repository|app)\s+(?:have|support|implement|use|include)\s+([a-zA-Z0-9_\-\s]{3,30})\b', q_lower)
+            feat_term = feat_match.group(1).strip() if feat_match else None
+            if not feat_term:
+                for cand in ["caching", "cache", "rate limit", "rate limiting", "websocket", "websockets", "payment", "payments", "redis", "celery"]:
+                    if cand in q_lower:
+                        feat_term = cand
+                        break
+            if feat_term:
+                feat_clean = feat_term.split()[0] if " " in feat_term and len(feat_term) > 15 else feat_term
+                search_terms = {feat_clean.lower()}
+                if feat_clean.lower().endswith("ing") and len(feat_clean) > 4:
+                    stem = feat_clean[:-3].lower()
+                    search_terms.add(stem)
+                    search_terms.add(stem + "e")
+                elif feat_clean.lower().endswith("s") and len(feat_clean) > 3:
+                    search_terms.add(feat_clean[:-1].lower())
+
+                feat_filters = []
+                for st in search_terms:
+                    feat_filters.append(CodeChunk.chunk_text.ilike(f"%{st}%"))
+                    feat_filters.append(CodeChunk.code_symbol.ilike(f"%{st}%"))
+
+                matching_feat_chunks = db.query(CodeChunk).filter(
+                    CodeChunk.repository_id == repository_id,
+                    or_(*feat_filters)
+                ).limit(4).all()
+                indexed_file_count = db.query(IndexedFile.id).filter(IndexedFile.repository_id == repository_id).count()
+                repo_status = repo_record.status if repo_record else "ready"
+                is_incomplete = repo_status in ["indexing", "pending", "syncing", "unindexed"] or (indexed_file_count == 0) or repo_status in ["failed", "error"]
+
+                if matching_feat_chunks:
+                    audit_meta["feature_audit_outcome"] = "IMPLEMENTED"
+                    audit_meta["feature_name"] = feat_clean
+                    for mfc in matching_feat_chunks:
+                        if mfc.file_path not in present_paths:
+                            additional_chunks.append(mfc)
+                            present_paths.add(mfc.file_path)
+                    grounding_notes.append(
+                        f"FEATURE AUDIT for repository `{repo_label}`:\n"
+                        f"- Feature: `{feat_clean}`\n"
+                        f"- Audit Outcome: `IMPLEMENTED`.\n"
+                        f"- Verified implementations found in: {', '.join(set(c.file_path for c in matching_feat_chunks))}.\n"
+                        f"- Instructions: Explain how `{feat_clean}` is implemented based on the verified source evidence."
+                    )
+                elif is_incomplete:
+                    audit_meta["feature_audit_outcome"] = "UNVERIFIED"
+                    audit_meta["feature_name"] = feat_clean
+                    grounding_notes.append(
+                        f"FEATURE AUDIT for repository `{repo_label}`:\n"
+                        f"- Feature: `{feat_clean}`\n"
+                        f"- Audit Outcome: `UNVERIFIED` (repository indexing status: `{repo_status}`).\n"
+                        f"- Instructions: Explicitly state that the status of `{feat_clean}` is UNVERIFIED because indexing is in progress or incomplete. Do NOT claim it is absent."
+                    )
+                else:
+                    audit_meta["feature_audit_outcome"] = "NOT_FOUND_IN_INDEXED_SOURCE"
+                    audit_meta["feature_name"] = feat_clean
+                    grounding_notes.append(
+                        f"FEATURE AUDIT for repository `{repo_label}`:\n"
+                        f"- Feature: `{feat_clean}`\n"
+                        f"- Audit Outcome: `NOT_FOUND_IN_INDEXED_SOURCE`.\n"
+                        f"- Coverage: All {indexed_file_count} indexed files and symbols were checked; zero implementations or declarations of `{feat_clean}` were found.\n"
+                        f"- Instructions: Explicitly report that `{feat_clean}` is NOT_FOUND_IN_INDEXED_SOURCE in repository `{repo_label}` based on full source coverage across {indexed_file_count} files."
+                    )
 
         # Assemble and prioritize chunks
         if is_auth and has_auth:
@@ -2341,7 +2552,7 @@ class AssistantService:
                 )
                 for ac in additional_chunks
             ]
-            if audit_meta.get("retrieval_audit_outcome") == "IMPLEMENTED":
+            if audit_meta.get("retrieval_audit_outcome") == "IMPLEMENTED" or audit_meta.get("feature_audit_outcome") == "IMPLEMENTED" or is_broad_arch_query:
                 combined = add_retrieved + retrieved_chunks
             else:
                 combined = retrieved_chunks + add_retrieved
@@ -2352,7 +2563,8 @@ class AssistantService:
                 if key not in seen_spans:
                     seen_spans.add(key)
                     deduped.append(c)
-            retrieved_chunks = deduped
+            max_limit = 16 if is_broad_arch_query else 10
+            retrieved_chunks = deduped[:max_limit]
 
         # If inquiry is specifically about missing explicit file(s), purge all chunks so unrelated files are not cited
         if audit_meta.get("missing_file_inquiry"):
@@ -3549,7 +3761,7 @@ class AssistantService:
             related_components = []
             risk_callout = {
                 "level": "LOW",
-                "summary": "General software engineering inquiry; no repository change impact."
+                "summary": "No change impact analysis performed for informational inquiry."
             }
             facts = {"confirmed": 1, "inferences": 0, "unknowns": 0}
 
@@ -3563,6 +3775,7 @@ class AssistantService:
                 file_outcome = audit_meta.get("file_audit_outcome", "NOT_FOUND_IN_INDEXED_SOURCE")
                 if file_outcome == "NOT_FOUND_IN_INDEXED_SOURCE":
                     answer = (
+                        f"No relevant source code found for {missing_names}. "
                         f"The file {missing_names} does not exist or was **not found** in the indexed source code of repository `{repo.full_name}` ({total_files} indexed files).\n\n"
                         f"- Verification status: `{file_outcome}`\n"
                         f"- No matching file path or directory entry exists in the currently indexed file catalog for this repository.\n"
@@ -3570,10 +3783,29 @@ class AssistantService:
                     )
                 else:
                     answer = (
+                        f"No relevant source code found for {missing_names}. "
                         f"The file {missing_names} could not be verified in repository `{repo.full_name}` because repository indexing is incomplete or in progress.\n\n"
                         f"- Verification status: `{file_outcome}`\n"
                         f"- Please allow indexing to complete or re-index the repository to confirm file existence."
                     )
+            elif audit_meta.get("has_identifier_audit") or audit_meta.get("absent_identifiers"):
+                absent = audit_meta.get("absent_identifiers", [])
+                absent_str = ", ".join([f"`{a}`" for a in absent]) if absent else "The queried identifier(s)"
+                answer = (
+                    f"No relevant source code or matching definitions were found for the queried symbols in repository `{repo.full_name}` ({total_files} indexed files).\n\n"
+                    f"- **Absent / Unverified Identifiers**: {absent_str} is UNVERIFIED / ABSENT in this repository's indexed source code. It does not exist as a parameter, function, class, or model field.\n"
+                    f"- Verification status: `NOT_FOUND_IN_INDEXED_SOURCE` / `UNVERIFIED`\n"
+                    f"- Zero matching symbols or occurrences were found across all {total_files} indexed source files.\n"
+                    f"- If this code was recently added or modified, trigger a repository re-indexing job to update the catalog."
+                )
+            elif audit_meta.get("feature_audit_outcome") == "NOT_FOUND_IN_INDEXED_SOURCE":
+                feat_name = audit_meta.get("feature_name", "The requested feature")
+                answer = (
+                    f"No relevant source code or implementation for `{feat_name}` was found in repository `{repo.full_name}` ({total_files} indexed files).\n\n"
+                    f"- Verification status: `NOT_FOUND_IN_INDEXED_SOURCE`\n"
+                    f"- Complete indexed source code was audited across functions, classes, AST symbols, and imports: zero matching implementations were found.\n"
+                    f"- If this feature is located in an unindexed branch or directory, trigger a repository re-indexing job to update the catalog."
+                )
             else:
                 answer = (
                     f"No relevant source code or symbols matching your query were found in repository `{repo.full_name}` ({total_files} indexed files). "
@@ -3590,7 +3822,7 @@ class AssistantService:
                 facts = {"confirmed": 0, "inferences": 0, "unknowns": 1}
             risk_callout = {
                 "level": "LOW",
-                "summary": f"File '{', '.join(audit_meta.get('missing_explicit_files', []))}' not found in indexed source of repository '{repo.name}'." if audit_meta.get("missing_file_inquiry") else f"No source chunks retrieved for query in repository '{repo.name}'."
+                "summary": "No change impact analysis performed for informational inquiry."
             }
             diagnostics = {
                 "conversation_id": conv.id,
@@ -4894,8 +5126,15 @@ class AssistantService:
             "If a repository has no backend routes or database models (e.g. frontend-only project), or if specific service layers or ORM models are not present, "
             "explicitly state that they could not be verified or are absent. Never invent unverified architecture layers or generic boilerplate.\n"
             "11. FOLLOW-UP & CALL HIERARCHY RULES: When answering follow-up questions about callers, callees, or dependencies, cite the exact verified callers and callees provided in <<<VERIFIED_CALL_HIERARCHY>>> or <<<VERIFIED_DEPENDENCIES>>>. Never invent unverified callers or assume all functions in a file call each other.\n"
-            "12. CONCISE-FIRST ANSWERS: Answer the user's specific question directly in the very first paragraph. "
-            "Do not begin with filler or boilerplate. Expand only with details and architectural evidence that directly answer the inquiry.\n"
+            "12. ANSWER DEPTH & DETAIL TIERS: Do not begin with conversational filler. Match response structure and depth to question intent:\n"
+            "   - TIER 1 (BROAD OVERVIEW & ARCHITECTURE): When asked to explain the repository, provide a project overview, explain architecture, or describe the end-to-end system, provide a thorough, structured response:\n"
+            "     1) Project Overview & Purpose: Domain, problem solved, primary languages, and verified frameworks.\n"
+            "     2) Core Architecture & Layers: Detail entry points, routes/controllers/screens, services/logic, data persistence/models, and configuration. Explain the responsibility of each component rather than just listing file names.\n"
+            "     3) Execution Flow: Walk through how user actions or requests flow across the layers.\n"
+            "     4) Layer Verification Status: Explicitly confirm verified layers and state any unverified or absent layers (e.g. absent backend, absent database models).\n"
+            "   - TIER 2 (FEATURE IMPLEMENTATION & REQUEST TRACING): Trace the path from entry point through business logic to persistence with exact citations and line ranges, explaining each step.\n"
+            "   - TIER 3 (NARROW TECHNICAL / IDENTIFIER / FUNCTION): Directly explain the specific function, symbol, or formula grounded in the implementation body.\n"
+            "   - TIER 4 (FEATURE EXISTENCE & NEGATIVE AUDITS): Distinguish IMPLEMENTED, NOT_FOUND_IN_INDEXED_SOURCE, and UNVERIFIED.\n"
             "13. CALL HIERARCHY & GRAPH INTEGRITY: When answering caller, callee, or call hierarchy questions, base your answer strictly "
             "on the verified relationships provided in <<<VERIFIED_CALL_HIERARCHY>>> and the retrieved source citations. "
             "Never invent caller functions (such as `get_dashboard_data`), never state a function calls itself unless a verified recursive call is documented, "
@@ -4934,18 +5173,26 @@ class AssistantService:
             "28. UNSPECIFIED FEATURE QUESTIONS: If asked whether an unspecified or abstract 'particular feature' or 'a feature' is implemented without naming the feature, function, or behavior, ask for clarification. Do NOT claim the feature is implemented, absent, or unverified."
         )
 
+        is_broad = bool(
+            re.search(r'\b(architecture|overview|explain this|about this|end to end|request flow|entire|repository|codebase|project structure)\b', question, re.IGNORECASE)
+        )
+        max_prompt_chunks = 16 if is_broad else 8
+        max_evidence_chars = 18000 if is_broad else 8000
+        max_chunk_lines = 50 if is_broad else 35
+        max_chunk_chars = 1800 if is_broad else 1200
+
         is_test_query = bool(re.search(r'\b(tests?|testing|pytest|unittest|fixture|mock|coverage)\b', question, re.IGNORECASE))
         if is_test_query:
             test_chunks = [c for c in chunks if any(ex in c.file_path.lower() for ex in ["tests/", "test/", "testing.py", "fixture"])]
-            prompt_chunks = (test_chunks + [c for c in chunks if c not in test_chunks])[:6]
+            prompt_chunks = (test_chunks + [c for c in chunks if c not in test_chunks])[:max_prompt_chunks]
         else:
             non_test_chunks = [c for c in chunks if not any(ex in c.file_path.lower() for ex in ["docs/", "tests/", "test/", "testing.py", "fixture"])]
-            prompt_chunks = (non_test_chunks if len(non_test_chunks) >= 3 else chunks)[:8]
+            prompt_chunks = (non_test_chunks if len(non_test_chunks) >= 3 else chunks)[:max_prompt_chunks]
 
         evidence_blocks = []
         total_evidence_chars = 0
         for idx, chunk in enumerate(prompt_chunks, start=1):
-            if total_evidence_chars > 6000:
+            if total_evidence_chars > max_evidence_chars:
                 break
             sym = f" | Symbol: {chunk.symbol_name}" if chunk.symbol_name else ""
             sanitized_text = (
@@ -4960,10 +5207,10 @@ class AssistantService:
                 .replace("<<<END_VERIFIED_CALL_HIERARCHY>>>", "[DELIMITER_FILTERED]")
             )
             lines = sanitized_text.splitlines()
-            if len(lines) > 35:
-                sanitized_text = "\n".join(lines[:35]) + "\n... [truncated for context limit]"
-            if len(sanitized_text) > 1200:
-                sanitized_text = sanitized_text[:1200] + "\n... [truncated for context limit]"
+            if len(lines) > max_chunk_lines:
+                sanitized_text = "\n".join(lines[:max_chunk_lines]) + "\n... [truncated for context limit]"
+            if len(sanitized_text) > max_chunk_chars:
+                sanitized_text = sanitized_text[:max_chunk_chars] + "\n... [truncated for context limit]"
 
             block = (
                 f"[Source {idx}: {chunk.file_path} (Lines {chunk.start_line}-{chunk.end_line}){sym}]\n"
@@ -5699,7 +5946,7 @@ class AssistantService:
                 related_components = []
                 risk_callout = {
                     "level": "LOW",
-                    "summary": "General software engineering inquiry; no repository change impact."
+                    "summary": "No change impact analysis performed for informational inquiry."
                 }
                 facts = {"confirmed": 1, "inferences": 0, "unknowns": 0}
                 yield cls._format_sse("citation", {
@@ -5716,6 +5963,7 @@ class AssistantService:
                     file_outcome = audit_meta.get("file_audit_outcome", "NOT_FOUND_IN_INDEXED_SOURCE")
                     if file_outcome == "NOT_FOUND_IN_INDEXED_SOURCE":
                         answer = (
+                            f"No relevant source code found for {missing_names}. "
                             f"The file {missing_names} does not exist or was **not found** in the indexed source code of repository `{repo.full_name}` ({total_files} indexed files).\n\n"
                             f"- Verification status: `{file_outcome}`\n"
                             f"- No matching file path or directory entry exists in the currently indexed file catalog for this repository.\n"
@@ -5723,10 +5971,29 @@ class AssistantService:
                         )
                     else:
                         answer = (
+                            f"No relevant source code found for {missing_names}. "
                             f"The file {missing_names} could not be verified in repository `{repo.full_name}` because repository indexing is incomplete or in progress.\n\n"
                             f"- Verification status: `{file_outcome}`\n"
                             f"- Please allow indexing to complete or re-index the repository to confirm file existence."
                         )
+                elif audit_meta.get("has_identifier_audit") or audit_meta.get("absent_identifiers"):
+                    absent = audit_meta.get("absent_identifiers", [])
+                    absent_str = ", ".join([f"`{a}`" for a in absent]) if absent else "The queried identifier(s)"
+                    answer = (
+                        f"No relevant source code or matching definitions were found for the queried symbols in repository `{repo.full_name}` ({total_files} indexed files).\n\n"
+                        f"- **Absent / Unverified Identifiers**: {absent_str} is UNVERIFIED / ABSENT in this repository's indexed source code. It does not exist as a parameter, function, class, or model field.\n"
+                        f"- Verification status: `NOT_FOUND_IN_INDEXED_SOURCE` / `UNVERIFIED`\n"
+                        f"- Zero matching symbols or occurrences were found across all {total_files} indexed source files.\n"
+                        f"- If this code was recently added or modified, trigger a repository re-indexing job to update the catalog."
+                    )
+                elif audit_meta.get("feature_audit_outcome") == "NOT_FOUND_IN_INDEXED_SOURCE":
+                    feat_name = audit_meta.get("feature_name", "The requested feature")
+                    answer = (
+                        f"No relevant source code or implementation for `{feat_name}` was found in repository `{repo.full_name}` ({total_files} indexed files).\n\n"
+                        f"- Verification status: `NOT_FOUND_IN_INDEXED_SOURCE`\n"
+                        f"- Complete indexed source code was audited across functions, classes, AST symbols, and imports: zero matching implementations were found.\n"
+                        f"- If this feature is located in an unindexed branch or directory, trigger a repository re-indexing job to update the catalog."
+                    )
                 else:
                     answer = (
                         f"No relevant source code or symbols matching your query were found in repository `{repo.full_name}` ({total_files} indexed files). "
@@ -5776,7 +6043,7 @@ class AssistantService:
                     facts = {"confirmed": 0, "inferences": 0, "unknowns": 1}
                 risk_callout = {
                     "level": "LOW",
-                    "summary": f"File '{', '.join(audit_meta.get('missing_explicit_files', []))}' not found in indexed source of repository '{repo.name}'." if audit_meta.get("missing_file_inquiry") else f"No source chunks retrieved for query in repository '{repo.name}'."
+                    "summary": "No change impact analysis performed for informational inquiry."
                 }
                 asst_msg = AssistantMessage(
                     conversation_id=conv.id,

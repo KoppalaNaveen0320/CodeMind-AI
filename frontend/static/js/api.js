@@ -1407,7 +1407,7 @@ window.openActiveSessionsModal = async function() {
         <div class="modal-head">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span class="repo-logo" style="background: rgba(99, 102, 241, 0.12); color: #4f46e5; width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center;">
-              <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+              <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
             </span>
             <div>
               <strong id="active-sessions-modal-title">Active Sessions</strong>
@@ -1420,7 +1420,7 @@ window.openActiveSessionsModal = async function() {
               <span>Revoke other sessions</span>
             </button>
             <button type="button" class="icon-btn modal-close-btn" id="btn-close-active-sessions-modal" onclick="closeActiveSessionsModal()" aria-label="Close modal">
-              <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 6 12 12M18 6 6 18" /></svg>
+              <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </button>
           </div>
         </div>

@@ -1154,21 +1154,8 @@ async def send_conversation_message(
     """
     conv = AssistantService.get_conversation_record(db, conversation_id, user.id)
 
-    # Repository consistency verification: if conversation is bound, reject mismatched caller request
-    if conv.repository_id and request.repository_id and conv.repository_id != request.repository_id:
-        bound_repo = db.query(Repository).filter(Repository.id == conv.repository_id).first()
-        bound_name = bound_repo.name if bound_repo else str(conv.repository_id)
-        req_repo = db.query(Repository).filter(Repository.id == request.repository_id).first()
-        req_name = req_repo.name if req_repo else str(request.repository_id)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Repository mismatch: This conversation is bound to repository {conv.repository_id} ('{bound_name}'), "
-                f"but request specified repository {request.repository_id} ('{req_name}'). "
-                f"Please select repository '{bound_name}' or start a new conversation."
-            )
-        )
-
+    # Conversation Repository Lock: Once bound to a repository, the conversation remains strictly locked
+    # to conv.repository_id and will not mutate to a different repository.
     active_repo_id = conv.repository_id or request.repository_id
     if not active_repo_id:
         raise HTTPException(
@@ -1299,21 +1286,8 @@ async def stream_conversation_message(
     """
     conv = AssistantService.get_conversation_record(db, conversation_id, user.id)
 
-    # Repository consistency verification: if conversation is bound, reject mismatched caller request
-    if conv.repository_id and request.repository_id and conv.repository_id != request.repository_id:
-        bound_repo = db.query(Repository).filter(Repository.id == conv.repository_id).first()
-        bound_name = bound_repo.name if bound_repo else str(conv.repository_id)
-        req_repo = db.query(Repository).filter(Repository.id == request.repository_id).first()
-        req_name = req_repo.name if req_repo else str(request.repository_id)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Repository mismatch: This conversation is bound to repository {conv.repository_id} ('{bound_name}'), "
-                f"but request specified repository {request.repository_id} ('{req_name}'). "
-                f"Please select repository '{bound_name}' or start a new conversation."
-            )
-        )
-
+    # Conversation Repository Lock: Once bound to a repository, the conversation remains strictly locked
+    # to conv.repository_id and will not mutate to a different repository.
     active_repo_id = conv.repository_id or request.repository_id
     if not active_repo_id:
         raise HTTPException(
