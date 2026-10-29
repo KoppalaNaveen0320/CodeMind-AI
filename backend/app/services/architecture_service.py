@@ -77,8 +77,8 @@ class RepositoryArchitecture:
     def get_components_of_type(self, comp_type: str, sub_type: Optional[str] = None) -> List[DiscoveredComponent]:
         comps = self.components_by_type.get(comp_type, [])
         if sub_type:
-            return [c for c in comps if c.metadata.get("sub_type") == sub_type]
-        return comps
+            comps = [c for c in comps if c.metadata.get("sub_type") == sub_type]
+        return sorted(comps, key=lambda c: c.confidence, reverse=True)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -316,50 +316,62 @@ class ArchitectureAnalysisEngine:
     def _detect_frameworks(cls, file_paths: List[str], chunks: List[CodeChunk], tech_stack: Optional[Any]) -> List[str]:
         frameworks: Set[str] = set()
         if tech_stack and isinstance(tech_stack, dict):
-            for cat in ["frontend", "backend", "database", "infrastructure"]:
+            for cat in ["frontend", "backend", "database"]:
                 for item in tech_stack.get(cat, []):
                     if isinstance(item, dict) and "name" in item:
-                        frameworks.add(item["name"])
+                        # Only include genuine frameworks, libraries, and ORMs; exclude raw programming languages, databases, and infra tools
+                        cat_type = str(item.get("category", "")).lower()
+                        item_type = str(item.get("type", "")).lower()
+                        item_name = item["name"]
+                        if item_name in ("Python", "JavaScript", "TypeScript", "HTML", "CSS", "Go", "Rust", "Java", "Kotlin", "C#", "Dart", "Docker", "Docker Compose", "PostgreSQL", "MySQL", "SQLite", "Redis", "MongoDB"):
+                            continue
+                        if any(k in cat_type for k in ["framework", "orm", "library"]) or any(k in item_type for k in ["framework", "orm", "library"]):
+                            frameworks.add(item_name)
+                        elif item_name in ("FastAPI", "Flask", "Django", "SQLAlchemy", "Alembic", "Express", "React", "Vue", "Flutter", "Spring Boot"):
+                            frameworks.add(item_name)
 
-        # Scan code chunks for framework identifiers
+        # Scan code chunks for framework identifiers using strict import or instantiation patterns
         for c in chunks[:100]:
             t = c.chunk_text
             p = c.file_path.lower()
-            if "fastapi" in t or "FastAPI" in t:
+            if any(ex in p for ex in ["tests/", "test/", "uploads/", "fixtures/", "docs/", "alembic/"]):
+                continue
+
+            if re.search(r'\b(?:from\s+fastapi\b|import\s+fastapi\b|\bFastAPI\s*\()', t):
                 frameworks.add("FastAPI")
-            if "flask" in t or "Flask(" in t:
+            if re.search(r'\b(?:from\s+flask\b|import\s+flask\b|\bFlask\s*\()', t):
                 frameworks.add("Flask")
-            if "django" in t:
+            if re.search(r'\b(?:from\s+django\b|import\s+django\b)', t):
                 frameworks.add("Django")
-            if "express()" in t or "from 'express'" in t or 'from "express"' in t:
+            if re.search(r'\b(?:express\s*\(\s*\)|from\s+[\'"]express[\'"]|require\s*\(\s*[\'"]express[\'"]\))', t):
                 frameworks.add("Express")
-            if "from 'react'" in t or 'from "react"' in t or "import React" in t:
+            if re.search(r'\b(?:from\s+[\'"]react[\'"]|import\s+React\b)', t):
                 frameworks.add("React")
-            if "package:flutter" in t or "runApp(" in t:
+            if re.search(r'\b(?:package:flutter/|\brunApp\s*\()', t):
                 frameworks.add("Flutter")
-            if "org.springframework" in t or "@SpringBootApplication" in t:
+            if re.search(r'\b(?:@SpringBootApplication\b|org\.springframework\b)', t):
                 frameworks.add("Spring Boot")
-            if "gin-gonic/gin" in t or "gin.Default()" in t:
+            if re.search(r'\b(?:gin-gonic/gin\b|\bgin\.Default\s*\()', t):
                 frameworks.add("Gin")
-            if "actix_web" in t:
+            if re.search(r'\b(?:actix_web::|\buse\s+actix_web\b)', t):
                 frameworks.add("Actix-web")
-            if "axum" in t:
+            if re.search(r'\b(?:axum::|\buse\s+axum\b)', t):
                 frameworks.add("Axum")
-            if "Microsoft.AspNetCore" in t:
+            if re.search(r'\bMicrosoft\.AspNetCore\b', t):
                 frameworks.add("ASP.NET Core")
-            if "vue" in t or "createApp(" in t:
+            if re.search(r'\b(?:from\s+[\'"]vue[\'"]|\bcreateApp\s*\()', t):
                 frameworks.add("Vue")
-            if "svelte" in t:
+            if re.search(r'\bfrom\s+[\'"]svelte[\'"]', t):
                 frameworks.add("Svelte")
-            if "@angular" in t:
+            if re.search(r'\b@angular/', t):
                 frameworks.add("Angular")
-            if "next" in t or "next/server" in t or "next/image" in t:
+            if re.search(r'\b(?:from\s+[\'"]next(?:/server|/image|/router|/navigation)?[\'"]|require\s*\(\s*[\'"]next[\'"]\))', t):
                 frameworks.add("Next.js")
-            if "nuxt" in t:
+            if re.search(r'\bfrom\s+[\'"]nuxt[\'"]', t):
                 frameworks.add("Nuxt")
-            if "@nestjs" in t:
+            if re.search(r'\b@nestjs/', t):
                 frameworks.add("NestJS")
-            if "react-native" in t or "AppRegistry" in t:
+            if re.search(r'\b(?:from\s+[\'"]react-native[\'"]|\bAppRegistry\b)', t):
                 frameworks.add("React Native")
 
         # Scan manifests in file paths
@@ -436,34 +448,49 @@ class ArchitectureAnalysisEngine:
             "Program.cs", "Startup.cs"
         }
 
+        # Directories that should NEVER be considered primary entry points
+        excluded_dirs = [
+            "services/", "models/", "repositories/", "schemas/", "utils/", "helpers/",
+            "migrations/", "alembic/", "tests/", "test/", "uploads/", "fixtures/",
+            "docs/", "node_modules/", "site-packages/", ".venv/", "venv/", "examples/"
+        ]
+
         for c in chunks:
             p = c.file_path.replace("\\", "/")
             p_name = Path(p).name.lower()
             p_full_lower = p.lower()
 
-            if any(ex in p_full_lower for ex in ["tests/", "test/", "uploads/", "fixtures/", "docs/"]):
+            if any(ex in p_full_lower for ex in excluded_dirs):
                 continue
 
             txt = c.chunk_text
-            matched = False
+            is_priority = (p_name in priority_files or any(p.endswith(pf) for pf in priority_files))
 
+            matched = False
             for pat, desc in entry_patterns:
                 m = re.search(pat, txt)
                 if m:
+                    # For generic main execution blocks or main functions, require that the file is a priority file
+                    # or located near repository root / cmd directory, avoiding helper/service scripts
+                    if pat in (r'\bif\s+__name__\s*==\s*["\']__main__["\']\s*:', r'\bdef\s+main\s*\(\s*\)\s*:'):
+                        if not is_priority and p.count("/") > 2 and not any(k in p_full_lower for k in ["/cmd/", "/bin/", "/cli/"]):
+                            continue
+
+                    conf = 0.99 if is_priority else 0.90
                     add_comp(DiscoveredComponent(
                         component_type="entry_point",
                         name=f"Entry: {Path(p).name}",
                         file_path=p,
                         start_line=c.start_line,
                         end_line=c.end_line,
-                        confidence=0.95,
+                        confidence=conf,
                         description=f"{desc} in `{p}`",
                         snippet=txt[:250],
                     ))
                     matched = True
                     break
 
-            if not matched and (p_name in priority_files or any(p.endswith(pf) for pf in priority_files)):
+            if not matched and is_priority:
                 # If named like main entry file and contains functions/classes or router inclusion
                 if any(k in txt for k in ["FastAPI", "Flask", "router", "include_router", "express", "App", "main", "listen", "runApp"]):
                     add_comp(DiscoveredComponent(
@@ -472,7 +499,7 @@ class ArchitectureAnalysisEngine:
                         file_path=p,
                         start_line=c.start_line,
                         end_line=c.end_line,
-                        confidence=0.85,
+                        confidence=0.95,
                         description=f"Application bootstrap file `{p}`",
                         snippet=txt[:250],
                     ))
@@ -617,16 +644,19 @@ class ArchitectureAnalysisEngine:
                 m = re.search(pat, txt)
                 if m:
                     m_name = m.group(1)
+                    is_orm = flavor in ("SQLAlchemy", "Django", "JPA", "GORM", "Diesel", "EFCore", "Prisma")
+                    conf = 0.98 if (is_orm and "model" in p_lower) else (0.95 if is_orm else 0.80)
+                    sub = "model" if is_orm else ("schema" if flavor == "Pydantic" else "model")
                     add_comp(DiscoveredComponent(
                         component_type="persistence",
                         name=f"Model: {m_name}",
                         file_path=p,
                         start_line=c.start_line,
                         end_line=c.end_line,
-                        confidence=0.95,
+                        confidence=conf,
                         description=f"Data model/schema `{m_name}` in `{p}`",
                         snippet=txt[:250],
-                        metadata={"sub_type": "model", "model_name": m_name, "flavor": flavor},
+                        metadata={"sub_type": sub, "model_name": m_name, "flavor": flavor},
                     ))
 
             # Repository / DAO classes
@@ -877,11 +907,13 @@ class ArchitectureAnalysisEngine:
 
         # 1. Entry point -> Routes registration
         if entry_points and routes:
-            for ep in entry_points[:2]:
-                ep_text = ep.snippet.lower()
-                for r in routes[:4]:
+            for ep in entry_points[:3]:
+                ep_norm = ep.file_path.replace("\\", "/")
+                ep_chunks = [c for c in chunks if c.file_path.replace("\\", "/") == ep_norm]
+                ep_text = " ".join([c.chunk_text.lower() for c in ep_chunks]) if ep_chunks else ep.snippet.lower()
+                for r in routes[:8]:
                     r_stem = Path(r.file_path).stem.lower()
-                    if r_stem in ep_text or "router" in ep_text or "routes" in ep_text:
+                    if r_stem in ep_text or any(k in ep_text for k in ["include_router", "add_routes", "router", "routes"]):
                         flows.append(DiscoveredFlow(
                             source_component=f"`{ep.file_path}`",
                             target_component=f"`{r.file_path}`",
@@ -892,11 +924,14 @@ class ArchitectureAnalysisEngine:
 
         # 2. Routes -> Services
         if routes and services:
-            for r in routes[:4]:
-                r_text = r.snippet.lower()
-                for s in services[:4]:
+            for r in routes[:8]:
+                r_norm = r.file_path.replace("\\", "/")
+                r_chunks = [c for c in chunks if c.file_path.replace("\\", "/") == r_norm]
+                r_text = " ".join([c.chunk_text.lower() for c in r_chunks]) if r_chunks else r.snippet.lower()
+                for s in services[:8]:
                     s_name = s.name.lower()
-                    if s_name in r_text or Path(s.file_path).stem.lower() in r_text:
+                    s_stem = Path(s.file_path).stem.lower()
+                    if s_name in r_text or s_stem in r_text or any(k in r_text for k in [f"{s_stem}.", f"{s_stem}("]):
                         flows.append(DiscoveredFlow(
                             source_component=f"`{r.file_path}`",
                             target_component=f"`{s.file_path}`",
@@ -907,12 +942,15 @@ class ArchitectureAnalysisEngine:
 
         # 3. Services / Handlers -> Persistence
         if persistence and (services or routes):
-            callers = services[:3] if services else routes[:3]
+            callers = services[:6] if services else routes[:6]
             for c in callers:
-                c_text = c.snippet.lower()
-                for p in persistence[:4]:
+                c_norm = c.file_path.replace("\\", "/")
+                c_chunks = [ch for ch in chunks if ch.file_path.replace("\\", "/") == c_norm]
+                c_text = " ".join([ch.chunk_text.lower() for ch in c_chunks]) if c_chunks else c.snippet.lower()
+                for p in persistence[:8]:
                     p_name = p.name.replace("Model: ", "").replace("Repository: ", "").lower()
-                    if p_name in c_text or Path(p.file_path).stem.lower() in c_text:
+                    p_stem = Path(p.file_path).stem.lower()
+                    if p_name in c_text or p_stem in c_text:
                         flows.append(DiscoveredFlow(
                             source_component=f"`{c.file_path}`",
                             target_component=f"`{p.file_path}`",
@@ -923,12 +961,15 @@ class ArchitectureAnalysisEngine:
 
         # 4. Services / Handlers -> External Integrations
         if integrations and (services or routes):
-            callers = services[:3] if services else routes[:3]
+            callers = services[:6] if services else routes[:6]
             for c in callers:
-                c_text = c.snippet.lower()
-                for ig in integrations[:3]:
+                c_norm = c.file_path.replace("\\", "/")
+                c_chunks = [ch for ch in chunks if ch.file_path.replace("\\", "/") == c_norm]
+                c_text = " ".join([ch.chunk_text.lower() for ch in c_chunks]) if c_chunks else c.snippet.lower()
+                for ig in integrations[:6]:
                     ig_name = ig.name.lower()
-                    if ig_name in c_text or Path(ig.file_path).stem.lower() in c_text:
+                    ig_stem = Path(ig.file_path).stem.lower()
+                    if ig_name in c_text or ig_stem in c_text:
                         flows.append(DiscoveredFlow(
                             source_component=f"`{c.file_path}`",
                             target_component=f"`{ig.file_path}`",

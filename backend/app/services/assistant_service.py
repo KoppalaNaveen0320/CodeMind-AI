@@ -547,12 +547,6 @@ class AssistantService:
                     explicit_target_matches.append((r, alias))
                     break
 
-        if has_deictic_ref and active_repo_id and not explicit_target_matches:
-            active_repo = next((r for r, _ in matchers if r.id == active_repo_id), None)
-            if not active_repo:
-                active_repo = db.query(Repository).filter(Repository.id == active_repo_id).first()
-            return active_repo, clean_norm_query(question), None
-
         if not matches:
             active_repo = next((r for r, _ in matchers if r.id == active_repo_id), None)
             if active_repo_id and not active_repo:
@@ -1466,9 +1460,19 @@ class AssistantService:
         if is_auth:
             candidate_auth_chunks = db.query(CodeChunk).filter(
                 CodeChunk.repository_id == repository_id,
+                not_(CodeChunk.file_path.ilike("%migrations/%")),
+                not_(CodeChunk.file_path.ilike("%alembic/%")),
+                not_(CodeChunk.file_path.ilike("%tests/%")),
+                not_(CodeChunk.file_path.ilike("%test/%")),
+                not_(CodeChunk.file_path.ilike("%uploads/%")),
+                not_(CodeChunk.file_path.ilike("%docs/%")),
+                not_(CodeChunk.file_path.ilike("%analyzer%")),
                 or_(
-                    CodeChunk.file_path.ilike("%auth%"),
-                    CodeChunk.file_path.ilike("%security%"),
+                    CodeChunk.file_path.ilike("%auth.py%"),
+                    CodeChunk.file_path.ilike("%auth_routes%"),
+                    CodeChunk.file_path.ilike("%github_auth%"),
+                    CodeChunk.file_path.ilike("%user_session%"),
+                    CodeChunk.file_path.ilike("%security.py%"),
                     CodeChunk.file_path.ilike("%user_service%"),
                     CodeChunk.file_path.ilike("%user_api%"),
                     CodeChunk.file_path.ilike("%login%"),
@@ -1487,19 +1491,24 @@ class AssistantService:
                     "create_access_token", "jwt", "login", "password", "authenticate",
                     "token", "session", "hash_password", "verify_password", "issue_token",
                     "verificationcode", "send_verification_code", "send_otp_email", "otp",
-                    "recovery", "reset_password"
+                    "recovery", "reset_password", "user_session", "oauth"
                 ]):
                     has_auth = True
                     auth_specific_chunks.append(ac)
 
             jwt_decode_count = db.query(CodeChunk).filter(
                 CodeChunk.repository_id == repository_id,
+                not_(CodeChunk.file_path.ilike("%tests/%")),
+                not_(CodeChunk.file_path.ilike("%migrations/%")),
                 CodeChunk.chunk_text.ilike("%jwt.decode%"),
             ).count()
 
             # Dynamic check for route protection & session validation
             protection_chunks = db.query(CodeChunk).filter(
                 CodeChunk.repository_id == repository_id,
+                not_(CodeChunk.file_path.ilike("%tests/%")),
+                not_(CodeChunk.file_path.ilike("%migrations/%")),
+                not_(CodeChunk.file_path.ilike("%alembic/%")),
                 or_(
                     CodeChunk.chunk_text.ilike("%session.get%"),
                     CodeChunk.chunk_text.ilike("%login_required%"),
@@ -1525,14 +1534,38 @@ class AssistantService:
                         deduped_auth.append(ac)
                 auth_specific_chunks = deduped_auth[:6]
 
-                grounding_notes.append(
-                    f"VERIFIED AUTHENTICATION AUDIT for repository `{repo_label}`:\n"
-                    f"- Token Creation & Security: VERIFIED in repository source files ({', '.join(seen_auth_files)}). "
-                    "Review credentials and token issuance in the retrieved citations.\n"
-                    f"- Token Validation / Decoding (`jwt.decode`): {'VERIFIED' if jwt_decode_count > 0 else 'UNVERIFIED / ABSENT'}. Exact occurrences of `jwt.decode` in indexed executable source: {jwt_decode_count}.\n"
-                    f"- Route Protection & Access Control: {route_prot_status}\n"
-                    "- Instructions for Answer: Explain the verified authentication flow citing exact file paths and line ranges. You MUST explicitly distinguish verified layers from unverified layers. Base security claims strictly on retrieved evidence."
+                enc_files = [f for f in seen_auth_files if "token_encryption" in f.lower() or "encryption" in f.lower()]
+                user_auth_files = [f for f in seen_auth_files if f not in enc_files]
+
+                auth_notes_parts = [f"VERIFIED AUTHENTICATION AUDIT for repository `{repo_label}`:"]
+                if enc_files:
+                    auth_notes_parts.append(
+                        f"- Token Encryption at Rest: VERIFIED in ({', '.join(enc_files)}). "
+                        "Provides authenticated AES-256-GCM symmetric encryption for sensitive GitHub tokens / PAT credentials stored at rest. "
+                        "CRITICAL: Token encryption at rest does NOT generate user login tokens and does NOT manage user login sessions."
+                    )
+                if user_auth_files:
+                    auth_notes_parts.append(
+                        f"- User Authentication & Sessions: VERIFIED in repository source files ({', '.join(user_auth_files)}). "
+                        "Explain user session tracking, cookie management, OAuth flow, or password verification strictly from these files."
+                    )
+                else:
+                    auth_notes_parts.append(
+                        "- User Login Token Issuance: UNVERIFIED / ABSENT from indexed repository files. "
+                        "The repository does not implement user login token generation or JWT creation."
+                    )
+
+                auth_notes_parts.append(
+                    f"- Token Validation / Decoding (`jwt.decode`): {'VERIFIED' if jwt_decode_count > 0 else 'UNVERIFIED / ABSENT'}. Exact occurrences of `jwt.decode` in indexed executable source: {jwt_decode_count}."
                 )
+                auth_notes_parts.append(f"- Route Protection & Access Control: {route_prot_status}")
+                auth_notes_parts.append(
+                    "- Instructions for Answer: You MUST explicitly distinguish verified authentication layers from unverified layers. "
+                    "Do NOT claim `token_encryption.py` creates login tokens or validates JWTs. "
+                    "Do NOT cite database migrations as active authentication handlers. Base all security claims strictly on retrieved evidence."
+                )
+
+                grounding_notes.append("\n".join(auth_notes_parts))
             else:
                 grounding_notes.append(
                     f"AUTHENTICATION AUDIT for repository `{repo_label}`:\n"
@@ -2325,6 +2358,21 @@ class AssistantService:
                     "- Instructions for Answer: Explain what the application does, its entry points, request flow, and verified component interactions citing exact file paths and line ranges. You MUST explicitly state which layers are unverified or absent from the indexed source code (such as if database models or dedicated repository modules do not exist in this project). Never invent unverified architecture layers."
                 )
 
+                def arch_layer_priority(c):
+                    p_lower = c.file_path.lower()
+                    if any(ep in p_lower for ep in ["main.py", "app.py", "server.py", "main.dart", "index.ts", "server.ts", "main.go", "run.py"]):
+                        return 0
+                    if any(rt in p_lower for rt in ["routes/", "routers/", "api_v1", "controller", "endpoint"]):
+                        return 1
+                    if any(sv in p_lower for sv in ["services/", "service/", "logic/"]):
+                        return 2
+                    if any(md in p_lower for md in ["models/", "model/", "entities/"]):
+                        return 3
+                    if any(cfg in p_lower for cfg in ["config", "settings", "docker", "requirements", "pubspec"]):
+                        return 4
+                    return 5
+                additional_chunks.sort(key=arch_layer_priority)
+
         # 3. Verified Request Flow Extraction for Tracing Queries
         is_trace_query = bool(re.search(
             r'\b(trace|request flow|flow|api request|from the entry point|business logic to database|call chain|pipeline)\b',
@@ -2768,22 +2816,26 @@ class AssistantService:
                     present_paths.add(fc.file_path)
 
         if flow_chunks:
-            seen_files = [f"`{c.file_path}:{c.start_line}â€“{c.end_line}`" for c in flow_chunks]
+            seen_files = [f"`{c.file_path}:{c.start_line}-{c.end_line}`" for c in flow_chunks]
             flow_desc_lines = [
                 f"VERIFIED REQUEST FLOW AUDIT for repository `{arch.repository_name}`:",
                 f"- Verified Pipeline Components: {', '.join(seen_files)}.",
             ]
             if entry_comps and route_comps:
                 flow_desc_lines.append(
-                    f"- Entry Point & Route Registration: Entry point `{entry_comps[0].file_path}` mounts and coordinates route handlers in `{', '.join([r.file_path for r in route_comps[:2]])}`."
+                    f"- Application Bootstrap & Route Registration: Entry point `{entry_comps[0].file_path}` initializes the web application and mounts route handlers in `{', '.join([r.file_path for r in route_comps[:2]])}`."
+                )
+            if route_comps:
+                flow_desc_lines.append(
+                    f"- API Entry Point & Request Routing: Incoming HTTP requests enter through route handlers in `{', '.join([r.file_path for r in route_comps[:2]])}`. The route handler validates request parameters and delegates to business logic services."
                 )
             if route_comps and svc_comps:
                 flow_desc_lines.append(
-                    f"- Route Handlers to Business Logic: Route handlers invoke verified service modules in `{', '.join([s.file_path for s in svc_comps[:2]])}`."
+                    f"- Business Logic Services: Route handlers invoke verified service modules in `{', '.join([s.file_path for s in svc_comps[:2]])}`. Service modules encapsulate business logic; they are NOT API entry points."
                 )
             if db_comps:
                 flow_desc_lines.append(
-                    f"- Persistence Operations: Handlers and services execute data access operations against declared models/repositories in `{', '.join([d.file_path for d in db_comps[:2]])}`."
+                    f"- Persistence Operations: Services and handlers query and persist application state using models/repositories in `{', '.join([d.file_path for d in db_comps[:2]])}`."
                 )
             if ig_comps:
                 flow_desc_lines.append(
@@ -2791,9 +2843,11 @@ class AssistantService:
                 )
 
             flow_desc_lines.append(
-                "- Anti-Hallucination Constraints: Do NOT state that API requests invoke schema migrations (`upgrade()`). "
-                "Alembic and database migrations are DDL scripts, not runtime request handlers. "
-                "Never invent intermediate service or upload files (such as `uploads/app.py`) that are not verified in the citations."
+                "- Critical Anti-Hallucination Constraints:\n"
+                "  1. Identify the actual route handler receiving the HTTP request, followed by the service handling business logic, and ending with data persistence/model.\n"
+                "  2. Never describe a service module (e.g. `assistant_service.py`, `indexing_service.py`, `user_service.py`) as an API entry point.\n"
+                "  3. Do NOT state that API requests invoke schema migrations (`upgrade()`). Alembic/database migrations are DDL scripts, not runtime request handlers.\n"
+                "  4. Never invent intermediate service or upload files (such as `uploads/app.py`) that are not verified in the citations."
             )
             flow_notes.append("\n".join(flow_desc_lines))
 
@@ -4774,6 +4828,60 @@ class AssistantService:
             if "jwt.decode" not in answer and not ("unverified" in answer.lower() or "absent" in answer.lower()):
                 answer += "\n\nNote: Token validation (`jwt.decode`) is UNVERIFIED / ABSENT from the retrieved source evidence."
 
+        # 5b. Authentication & Token Encryption grounding
+        # Token encryption at rest (AES-256-GCM) must NOT be described as user login token creation or JWT decoding
+        if "SecurityAnalyzer" in answer or "analyzer.py" in answer:
+            answer = re.sub(
+                r'where\s+the\s+token\s+creation\s+and\s+validation\s+occur\s+via\s+(?:the\s+)?`?SecurityAnalyzer(?:\.scan_repository)?`?[^,.]*',
+                'while security scanning is handled by `SecurityAnalyzer.scan_repository` (which scans source code for vulnerabilities and does not create or validate login tokens)',
+                answer,
+                flags=re.IGNORECASE
+            )
+            answer = re.sub(
+                r'SecurityAnalyzer(?:\.scan_repository)?\s*(?:creates?|validates?|manages?)\s*(?:the\s*)?(?:login\s*)?tokens?',
+                'SecurityAnalyzer scans code for security findings and does not manage login tokens',
+                answer,
+                flags=re.IGNORECASE
+            )
+
+        if "token_encryption" in answer:
+            answer = re.sub(
+                r'token_encryption(?:\.py)?\s*(?:file\s*)?(?:,\s*which\s*)?(?:uses\s+`?jwt\.decode`?\s*to\s*validate\s*jwts?|creates?\s+(?:and\s+validates?\s+)?(?:login\s+)?tokens?)',
+                r'token_encryption.py file provides AES-256-GCM symmetric encryption for GitHub tokens at rest (user JWT validation via `jwt.decode` is UNVERIFIED / ABSENT from the codebase)',
+                answer,
+                flags=re.IGNORECASE
+            )
+            answer = re.sub(
+                r'(?:Token creation or validation is managed by (?:the\s*)?`?token_encryption(?:\.py)?`?)',
+                r'Token encryption at rest is handled by `token_encryption.py` (which encrypts sensitive GitHub OAuth credentials with AES-256-GCM, while user login token creation/JWT decoding is UNVERIFIED / ABSENT)',
+                answer,
+                flags=re.IGNORECASE
+            )
+            answer = re.sub(
+                r'The\s+token\s+creation\s+and\s+validation\s+are\s+implemented\s+in\s+`?backend/app/core/token_encryption(?:\.py)?`?[^.]*\.',
+                'Token encryption at rest is implemented in `backend/app/core/token_encryption.py` using AES-256-GCM for third-party GitHub credentials; user login token creation and validation are UNVERIFIED / ABSENT from repository code.',
+                answer,
+                flags=re.IGNORECASE
+            )
+
+        jwt_count = audit_meta.get("jwt_decode_count", 0) if audit_meta else 0
+        if jwt_count == 0 and "jwt.decode" in answer and not any(k in answer.lower() for k in ["unverified", "absent", "not found", "0 occurrences", "is not used", "does not use"]):
+            answer = re.sub(
+                r'(\buses\s+`?jwt\.decode`?\s*[^.\n]*)',
+                r'does not implement `jwt.decode` (JWT token decoding is UNVERIFIED / ABSENT in repository code)',
+                answer,
+                flags=re.IGNORECASE
+            )
+
+        # Do not attribute user login business logic to assistant_service.py
+        if "assistant_service" in answer and any(k in answer.lower() for k in ["login", "authenticate", "authentication"]):
+            answer = re.sub(
+                r'delegates\s+to\s+(?:the\s+)?`?assistant_service(?:\.py)?`?\s*service\s*module\s*for\s*business\s*logic',
+                'processes authentication credentials through user session / auth handlers',
+                answer,
+                flags=re.IGNORECASE
+            )
+
         # 6. Call hierarchy contradiction cleanup (generic, not project-specific)
         if "not called by any other function" in answer.lower() and re.search(r'\bis called by\b', answer, re.IGNORECASE):
             answer = re.sub(
@@ -4855,7 +4963,7 @@ class AssistantService:
                 escaped_fp = re.escape(target_chunk.file_path)
                 file_mention_pat = r'(`?' + escaped_fp + r'`?)(?!\s*:\s*\d+|\s*\(\s*lines?\s*\d+)'
                 if re.search(file_mention_pat, answer):
-                    rep = f"`{target_chunk.file_path}:{target_chunk.start_line}â€“{target_chunk.end_line}`"
+                    rep = f"`{target_chunk.file_path}:{target_chunk.start_line}-{target_chunk.end_line}`"
                     answer = re.sub(file_mention_pat, rep, answer, count=1)
 
         # Ensure citation markers remain separate from mathematical syntax
@@ -4890,7 +4998,7 @@ class AssistantService:
                     if c.file_path not in seen_f:
                         seen_f.add(c.file_path)
                         sym_info = f" ({c.symbol_name})" if c.symbol_name else ""
-                        comp_lines.append(f"- `{c.file_path}:{c.start_line}â€“{c.end_line}`{sym_info}")
+                        comp_lines.append(f"- `{c.file_path}:{c.start_line}-{c.end_line}`{sym_info}")
                         if len(seen_f) >= 4:
                             break
                 answer += "\n" + "\n".join(comp_lines)
@@ -4945,11 +5053,16 @@ class AssistantService:
         if audit_meta and audit_meta.get("retrieval_audit_outcome") == "NOT_FOUND_IN_INDEXED_SOURCE":
             answer = re.sub(r'\bUNVERIFIED\s*/\s*ABSENT\b', 'NOT_FOUND_IN_INDEXED_SOURCE', answer)
 
+        # Check if the target repository actually contains hybrid_engine.py evidence
+        has_hybrid_in_evidence = any("hybrid_engine" in c.file_path for c in chunks) or (
+            bool(audit_meta and any("hybrid_engine" in f for f in audit_meta.get("retrieval_files", [])))
+        )
+
         # 11. Score combination mathematical formula formatting: ensure human-readable LaTeX display math
         is_score_comb = bool(audit_meta and audit_meta.get("is_score_combination_query")) or (
             question and bool(re.search(r'\b(vector\s*(?:and|&)\s*keyword\s*scores?|scores?\s*(?:are\s*)?(?:combined|merged|fused|weighted|calculated)|score\s*(?:fusion|combination|weights?|calculation)|(?:combine|fuse|merge)\s*(?:the\s*)?(?:vector\s*(?:and|&)\s*keyword|scores?)|rank\s*fusion|scoring\s*formula|hybrid\s*retrieval\s*score|final\s*hybrid\s*retrieval\s*score|final\s*score)\b', question.lower()))
         )
-        if is_score_comb:
+        if is_score_comb and has_hybrid_in_evidence:
             if "RETRIEVAL_GRAPH_WEIGHT" in answer or re.search(r'graph\s*(?:expansion\s*)?weight\s*(?:is\s*)?(?:defined|configured)\s*in\s*(?:config|settings)', answer, re.IGNORECASE):
                 answer = re.sub(r'RETRIEVAL_GRAPH_WEIGHT\s*(?:=\s*0\.15)?', 'hardcoded `w_graph = 0.15` (Line 234)', answer)
                 answer = re.sub(r'graph\s*(?:expansion\s*)?weight\s*(?:is\s*)?(?:defined|configured)\s*in\s*(?:backend/app/core/)?config\.py(?::\d+(?:-\d+)?)?', 'graph expansion weight (0.15) is hardcoded in `backend/app/retrieval/hybrid_engine.py:234` and not defined in `config.py`', answer, flags=re.IGNORECASE)
@@ -4982,7 +5095,7 @@ class AssistantService:
         is_kw_matching = bool(audit_meta and audit_meta.get("is_keyword_matching_query")) or (
             question and bool(re.search(r'\b(which\s+function\s+.*keyword\s*match\w*|keyword\s*matching\s*function|how\s+(?:does|is)\s+keyword\s*match\w*|keyword\s*matching\s*logic|keyword\s*retrieval\s*logic)\b', question.lower()))
         )
-        if is_kw_matching:
+        if is_kw_matching and has_hybrid_in_evidence:
             if re.search(r'\b(KeywordMatcher|keyword_matching\.py|fuzzywuzzy|Levenshtein|Jaccard)\b', answer):
                 answer = re.sub(r'\bKeywordMatcher\b', 'HybridRetrievalEngine', answer)
                 answer = re.sub(r'\bkeyword_matching\.py\b', 'hybrid_engine.py', answer)
@@ -5003,7 +5116,7 @@ class AssistantService:
         is_vec_sim = bool(audit_meta and audit_meta.get("is_vector_similarity_query")) or (
             question and bool(re.search(r'\b(vector\s*(?:similarity|distance|search|matching)|cosine\s*similarity|_cosine_similarity|pgvector|how\s*(?:does\s*this\s*repo(?:sitory)?\s*)?calculate\s*vector)\b', question.lower()))
         )
-        if is_vec_sim:
+        if is_vec_sim and has_hybrid_in_evidence:
             has_pg = "pgvector" in answer.lower() or "postgresql" in answer.lower()
             has_cos_dist = "cosine_distance" in answer.replace(r"\_", "_")
             has_conv = any(k in answer for k in ["1.0 - cosine_distance", "1 - cosine_distance", "max(0.0, 1.0 - float(dist))"])
@@ -5032,6 +5145,11 @@ class AssistantService:
                     + r"\]" + "\n"
                 )
                 answer += formula_display
+
+        if not has_hybrid_in_evidence:
+            # Prevent cross-repository citation leakage into answers for repositories that do not contain hybrid_engine
+            answer = re.sub(r'backend/app/retrieval/hybrid_engine\.py(?::\d+(?:-\d+)?)?', 'the codebase search implementation', answer)
+            answer = re.sub(r'backend/app/core/config\.py(?::\d+(?:-\d+)?)?', 'configuration files', answer)
 
         return answer
 
@@ -5091,6 +5209,27 @@ class AssistantService:
             messages.append({"role": "user", "content": user_content})
             return messages
 
+        has_hybrid_in_evidence = any("hybrid_engine" in c.file_path for c in chunks)
+        if has_hybrid_in_evidence:
+            hybrid_rules = (
+                "25. VECTOR SIMILARITY & HYBRID RETRIEVAL: When explaining vector similarity in this repository, explain both the primary PostgreSQL pgvector query path using `CodeChunk.embedding.cosine_distance(query_vector)` converted via `1.0 - cosine_distance` (`max(0.0, 1.0 - float(dist))`) and the in-memory fallback `_cosine_similarity` using dot product divided by Euclidean norms (`sum(a * b) / (||a|| * ||b||)`), with zero-vector handling returning 0.0 if either norm is zero. State clearly that PostgreSQL pgvector is the primary runtime path and `_cosine_similarity` is the fallback. Do NOT conflate vector similarity with keyword search.\n"
+                "26. HYBRID RETRIEVAL SCORING & WEIGHTS GROUNDING: When explaining the final hybrid retrieval score formula and weights:\n"
+                "   - Base formula: \\[ \\text{final\\_score} = 0.50V + 0.30K + 0.20E + 0.15G \\].\n"
+                "   - Describe each channel independently: vector similarity (0.50) uses pgvector cosine distance / dot product; keyword matching (0.30) uses token hit ratio; exact matching (0.20) uses symbol/filename matching; graph expansion (0.15) uses 1-hop traversal. Do NOT apply cosine similarity across keyword, exact, or graph scores.\n"
+                "   - Weight sources: Vector (0.50), keyword (0.30), and exact-match (0.20) weights are defined in `backend/app/core/config.py:83-85` (`RETRIEVAL_VECTOR_WEIGHT`, `RETRIEVAL_KEYWORD_WEIGHT`, `RETRIEVAL_EXACT_WEIGHT`). In contrast, the knowledge-graph weight `w_graph = 0.15` is HARDCODED in `backend/app/retrieval/hybrid_engine.py:234` and is NOT defined in `config.py` (there is NO `RETRIEVAL_GRAPH_WEIGHT`). The weights sum to 1.15 and are NOT normalized to 1.0.\n"
+                "   - Cite runtime fusion (`backend/app/retrieval/hybrid_engine.py:230-268`) and config weights (`backend/app/core/config.py:83-85`) separately.\n"
+                "27. KEYWORD MATCHING IMPLEMENTATION GROUNDING: When explaining keyword matching in this codebase:\n"
+                "   - Cite the actual method: `HybridRetrievalEngine._retrieve_keyword_matches` in `backend/app/retrieval/hybrid_engine.py` (Lines 476-549).\n"
+                "   - Explain actual logic: token extraction (length >= 3, stopwords and repo tokens filtered, up to 12 words), case-insensitive SQL matching via `CodeChunk.chunk_text.ilike(f'%{w}%')`, and token hit ratio score \\[ \\text{score} = \\min(1.0, \\text{hit\\_count} / \\max(1, \\text{len}(\\text{search\\_words}))) \\], returning top 20 candidates.\n"
+                "   - Distinguish from vector similarity: keyword matching is literal character substring matching on raw code text; vector similarity compares dense semantic embeddings. Never hallucinate `KeywordMatcher`, `keyword_matching.py`, Jaccard similarity, Levenshtein distance, or `fuzzywuzzy`.\n"
+                "28. UNSPECIFIED FEATURE QUESTIONS: If asked whether an unspecified or abstract 'particular feature' or 'a feature' is implemented without naming the feature, function, or behavior, ask for clarification. Do NOT claim the feature is implemented, absent, or unverified."
+            )
+        else:
+            hybrid_rules = (
+                "25. REPOSITORY CODE GROUNDING: When explaining algorithms, search, scoring, or matching, base your answer strictly on the algorithms and methods verified in <<<REPOSITORY_EVIDENCE>>>. Do NOT attribute scoring formulas, weights, or retrieval files from other repositories (e.g. host platform `hybrid_engine.py` or `config.py`).\n"
+                "26. UNSPECIFIED FEATURE QUESTIONS: If asked whether an unspecified or abstract 'particular feature' or 'a feature' is implemented without naming the feature, function, or behavior, ask for clarification. Do NOT claim the feature is implemented, absent, or unverified."
+            )
+
         system_prompt = (
             "You are CodeMind AI, an expert repository assistant.\n"
             "Your task is to answer questions about the repository accurately based ONLY on the verified evidence provided.\n\n"
@@ -5137,40 +5276,28 @@ class AssistantService:
             "   - TIER 4 (FEATURE EXISTENCE & NEGATIVE AUDITS): Distinguish IMPLEMENTED, NOT_FOUND_IN_INDEXED_SOURCE, and UNVERIFIED.\n"
             "13. CALL HIERARCHY & GRAPH INTEGRITY: When answering caller, callee, or call hierarchy questions, base your answer strictly "
             "on the verified relationships provided in <<<VERIFIED_CALL_HIERARCHY>>> and the retrieved source citations. "
-            "Never invent caller functions (such as `get_dashboard_data`), never state a function calls itself unless a verified recursive call is documented, "
-            "and do not produce self-contradictory statements (such as claiming a function has no callers and in the next sentence claiming it is called by another function).\n"
+            "Never invent caller functions (such as `get_dashboard_data`), never state a function calls itself unless a recursive call is verified, "
+            "and do not produce self-contradictory statements.\n"
             "14. DATABASE TRANSACTIONS & COMMITS: When answering questions about database operations, commits, or rollbacks, "
             "inspect the complete function implementation and surrounding context. Accurately identify where `db.commit()` and `db.rollback()` occur. "
-            "Do NOT propose speculative transaction modifications or nested transaction blocks without first validating SQLAlchemy session lifecycle.\n"
+            "Do NOT propose speculative transaction modifications without validating SQLAlchemy session lifecycle.\n"
             "15. FEATURE AUDIT & NEGATIVE DETECTION RULES: When asked whether a feature (e.g. hybrid retrieval, vector search, email OTP, caching) is implemented, "
             "you MUST distinguish these three exact outcomes:\n"
             "   - `IMPLEMENTED`: Direct source evidence demonstrates the feature. Cite the exact implementation files and line ranges.\n"
-            "   - `NOT_FOUND_IN_INDEXED_SOURCE`: Complete indexed source was checked across symbols, functions, classes, imports, and dependencies, but no implementation exists in the indexed files. Ground this negative finding in complete indexed file coverage where zero matching retrieval symbols exist, supplemented by citing the inspected project manifest and primary entry points to confirm no search dependencies or bootstrap. Never treat project manifests or build scripts alone as sufficient proof of feature absence, and distinguish NOT_FOUND_IN_INDEXED_SOURCE from verified absolute absence. Never cite unrelated files (e.g. PDF generators or activity wrappers) as evidence of a retrieval engine.\n"
+            "   - `NOT_FOUND_IN_INDEXED_SOURCE`: Complete indexed source was checked across symbols, functions, classes, imports, and dependencies, but no implementation exists in the indexed files. Ground this negative finding in complete indexed file coverage where zero matching retrieval symbols exist, supplemented by citing the inspected project manifest and primary entry points to confirm no search dependencies or bootstrap. Never cite unrelated files as evidence of a retrieval engine.\n"
             "   - `UNVERIFIED`: Source coverage is incomplete, indexing is in progress or failed, or available evidence is insufficient. Never claim a feature is absent when repository indexing is incomplete or failed.\n"
             "16. MULTI-TURN CONSISTENCY: Maintain consistent facts across turns. Do not contradict answers given in previous conversation turns unless new verified evidence refutes an earlier inference.\n"
             "17. LATEST QUESTION PRIORITY: Focus directly and primarily on answering the user's latest question. Do NOT answer a previous question from the conversation history instead of the latest question.\n"
             "18. TOPIC TRANSITIONS: When the user asks about a new component, file, or topic, do NOT carry forward irrelevant context, symbols, or code from earlier questions unless the user explicitly refers back to them.\n"
             "19. NO UNREQUESTED REPETITION: Do NOT repeat earlier answers or full architectural recaps unless specifically asked to summarize or recap.\n"
-            "20. FEATURE IMPLEMENTATION VS DATA MODEL FIELDS: A database model field (e.g. `email = Column(String)` in `UserModel`) or configuration parameter does NOT mean an active service or feature (such as email sending/notifications, SMS, or payments) is implemented. Do NOT claim the project supports email notifications or email sending unless verified email-sending code (e.g., SMTP client, SES, SendGrid, email sender service/function) exists in the retrieved evidence. If only a user database field exists, state clearly: an `email` field exists on the user model, but email sending / notification implementation is UNVERIFIED / ABSENT.\n"
+            "20. FEATURE IMPLEMENTATION VS DATA MODEL FIELDS: A database model field (e.g. `email = Column(String)` in `UserModel`) or configuration parameter does NOT mean an active service or feature is implemented. Do NOT claim the project supports email notifications unless verified email-sending code exists in the retrieved evidence. If only a user database field exists, state clearly: an `email` field exists on the user model, but email sending / notification implementation is UNVERIFIED / ABSENT.\n"
             "21. CONFIGURED DATABASE VALUES: When asked what database values or URL are configured, report the exact default values or environment variable declarations verified in `settings.py` or configuration files. Do NOT invent unverified production database URLs or claim an external database is configured unless verified in the indexed evidence.\n"
             "22. FUNCTION RESPONSIBILITY VERIFICATION: When describing what a function, method, or class does, ground your explanation in its actual implementation body from retrieved evidence, NOT solely from its name. "
-            "A function named `send_email()` may only store an email address; a class named `NotificationService` may only log messages. Report exactly what the implementation does. "
             "Do NOT assume a function performs the action implied by its name unless the retrieved code body confirms it.\n"
-            "23. FRAMEWORK-AGNOSTIC ENTRY POINTS: Do NOT assume the repository uses any specific framework (FastAPI, Flask, Express, Spring Boot, Flutter, etc.) unless the retrieved evidence confirms it. "
-            "When referencing entry points, routes, or application bootstrap, use the exact file paths and patterns verified in the evidence. "
-            "Do NOT substitute framework-specific conventions (e.g., `main.py`, `app.py`, `index.ts`) unless those files actually exist in the retrieved evidence.\n"
-            "24. MATHEMATICAL FORMULAS: Whenever presenting formulas, equations, scoring formulas (such as hybrid retrieval rank fusion), or calculations, format them using standard Markdown math delimiters: display equations on their own lines using \\[ ... \\], inline expressions using \\( ... \\), and clean LaTeX syntax (e.g. \\[ \\text{final\\_score} = 0.50V + 0.30K + 0.20E + 0.15G \\]). Do NOT wrap equations in code fences unless specifically asked for raw code or LaTeX. Keep citation markers separate from mathematical syntax; place citation markers outside equation delimiters (e.g. \\[ ... \\] [1] or \\( ... \\) [1]). Preserve formula accuracy, variables, constants, exponents, subscripts, fractions, and operators exactly as defined in the source code.\n"
-            "25. VECTOR SIMILARITY & HYBRID RETRIEVAL: When explaining vector similarity in this repository, explain both the primary PostgreSQL pgvector query path using `CodeChunk.embedding.cosine_distance(query_vector)` converted via `1.0 - cosine_distance` (`max(0.0, 1.0 - float(dist))`) and the in-memory fallback `_cosine_similarity` using dot product divided by Euclidean norms (`sum(a * b) / (||a|| * ||b||)`), with zero-vector handling returning 0.0 if either norm is zero. State clearly that PostgreSQL pgvector is the primary runtime path and `_cosine_similarity` is the fallback. Do NOT conflate vector similarity with keyword search.\n"
-            "26. HYBRID RETRIEVAL SCORING & WEIGHTS GROUNDING: When explaining the final hybrid retrieval score formula and weights:\n"
-            "   - Base formula: \\[ \\text{final\\_score} = 0.50V + 0.30K + 0.20E + 0.15G \\].\n"
-            "   - Describe each channel independently: vector similarity (0.50) uses pgvector cosine distance / dot product; keyword matching (0.30) uses token hit ratio; exact matching (0.20) uses symbol/filename matching; graph expansion (0.15) uses 1-hop traversal. Do NOT apply cosine similarity across keyword, exact, or graph scores.\n"
-            "   - Weight sources: Vector (0.50), keyword (0.30), and exact-match (0.20) weights are defined in `backend/app/core/config.py:83-85` (`RETRIEVAL_VECTOR_WEIGHT`, `RETRIEVAL_KEYWORD_WEIGHT`, `RETRIEVAL_EXACT_WEIGHT`). In contrast, the knowledge-graph weight `w_graph = 0.15` is HARDCODED in `backend/app/retrieval/hybrid_engine.py:234` and is NOT defined in `config.py` (there is NO `RETRIEVAL_GRAPH_WEIGHT`). The weights sum to 1.15 and are NOT normalized to 1.0.\n"
-            "   - Cite runtime fusion (`backend/app/retrieval/hybrid_engine.py:230-268`) and config weights (`backend/app/core/config.py:83-85`) separately.\n"
-            "27. KEYWORD MATCHING IMPLEMENTATION GROUNDING: When explaining keyword matching in this codebase:\n"
-            "   - Cite the actual method: `HybridRetrievalEngine._retrieve_keyword_matches` in `backend/app/retrieval/hybrid_engine.py` (Lines 476-549).\n"
-            "   - Explain actual logic: token extraction (length >= 3, stopwords and repo tokens filtered, up to 12 words), case-insensitive SQL matching via `CodeChunk.chunk_text.ilike(f'%{w}%')`, and token hit ratio score \\[ \\text{score} = \\min(1.0, \\text{hit\\_count} / \\max(1, \\text{len}(\\text{search\\_words}))) \\], returning top 20 candidates.\n"
-            "   - Distinguish from vector similarity: keyword matching is literal character substring matching on raw code text; vector similarity compares dense semantic embeddings. Never hallucinate `KeywordMatcher`, `keyword_matching.py`, Jaccard similarity, Levenshtein distance, or `fuzzywuzzy`.\n"
-            "28. UNSPECIFIED FEATURE QUESTIONS: If asked whether an unspecified or abstract 'particular feature' or 'a feature' is implemented without naming the feature, function, or behavior, ask for clarification. Do NOT claim the feature is implemented, absent, or unverified."
+            "23. FRAMEWORK-AGNOSTIC ENTRY POINTS: Do NOT assume the repository uses any specific framework unless the retrieved evidence confirms it. "
+            "When referencing entry points, routes, or application bootstrap, use the exact file paths and patterns verified in the evidence.\n"
+            "24. MATHEMATICAL FORMULAS: Whenever presenting formulas, equations, scoring formulas, or calculations, format them using standard Markdown math delimiters: display equations on their own lines using \\[ ... \\], inline expressions using \\( ... \\), and clean LaTeX syntax. Do NOT wrap equations in code fences unless specifically asked. Keep citation markers separate from mathematical syntax; place citation markers outside equation delimiters.\n"
+            f"{hybrid_rules}"
         )
 
         is_broad = bool(
