@@ -64,7 +64,8 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "qwen2.5:3b"
     LLM_BASE_URL: str = ""
-    LLM_TEMPERATURE: float = 0.1
+    LLM_TEMPERATURE: float = 0.3
+    LLM_CONTEXT_WINDOW: int = 8192
     LLM_TIMEOUT_SECONDS: int = 90
     
     # Embedding Configuration

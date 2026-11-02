@@ -44,6 +44,18 @@ class HybridRetrievalEngine:
     Enforces repository authorization, deduplication, and max context boundaries.
     """
 
+
+    CONCEPT_STEM_MAPPING: Dict[str, Tuple[str, ...]] = {
+        "auth": ("auth", "authenticate", "authentication", "authorization", "authorize", "login", "jwt", "session"),
+        "config": ("config", "configuration", "settings", "setting", "env", "environment", "properties"),
+        "database": ("db", "database", "repository", "repositories", "model", "models", "schema", "entity", "entities", "connection"),
+        "route": ("router", "routers", "route", "routes", "endpoint", "endpoints", "api", "controller", "controllers"),
+        "transfer": ("transfer", "transfers", "transaction", "transactions", "ledger", "balance", "wallet"),
+        "migration": ("migration", "migrations", "alembic", "flyway", "migrate"),
+        "service": ("service", "services", "handler", "handlers", "manager", "managers"),
+        "entrypoint": ("entrypoint", "main", "startup", "initialize", "initialization"),
+    }
+
     STOPWORDS: Set[str] = {
         "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
         "by", "from", "up", "about", "into", "through", "after", "is", "are", "was", "were",
@@ -71,14 +83,25 @@ class HybridRetrievalEngine:
         for m in re.findall(r'`([a-zA-Z0-9_\-./\\]+/[a-zA-Z0-9_\-./\\]+)`', query):
             candidates.add(m.strip().replace("\\", "/"))
 
-        # 2. Unquoted filenames with source or config extensions
-        ext_pattern = r'\b([a-zA-Z0-9_\-./\\]+\.(?:py|js|ts|tsx|jsx|dart|go|java|kt|kts|rs|cs|cpp|c|vue|svelte|swift|php|rb|json|yaml|yml|toml|sql|html|css|md|rst|txt|sh|dockerfile|lock))\b'
+        # 2. Unquoted filenames with source, config, or manifest extensions
+        ext_pattern = r'\b([a-zA-Z0-9_\-./\\]+\.(?:py|js|ts|tsx|jsx|dart|go|java|kt|kts|rs|cs|cpp|c|vue|svelte|swift|php|rb|json|yaml|yml|toml|sql|html|css|md|rst|txt|sh|dockerfile|lock|example|env))\b'
         for m in re.findall(ext_pattern, query, re.IGNORECASE):
+            candidates.add(m.strip().replace("\\", "/"))
+
+        # 2b. Dotfiles and env files (.env, .env.example, .env.local, .gitignore, .dockerignore)
+        for m in re.findall(r'\b(\.env(?:\.[a-zA-Z0-9_\-]+)?|\.gitignore|\.dockerignore)\b', query, re.IGNORECASE):
             candidates.add(m.strip().replace("\\", "/"))
 
         # 3. Special file names without extension
         for m in re.findall(r'\b(Dockerfile|docker-compose|Makefile)\b', query, re.IGNORECASE):
             candidates.add(m.strip().replace("\\", "/"))
+
+        # 4. Universal entrypoint discovery for initialization queries across languages
+        if re.search(r'\b(entrypoint|entry\s*point|application\s*entrypoint|fastapi\s*(?:app|application)\s*(?:is\s*)?initialized|where\s+routers\s+are\s+included|main\s*entrypoint)\b', query, re.IGNORECASE):
+            candidates.update([
+                "main.py", "app.py", "server.py", "application.py",
+                "main.go", "main.rs", "main.ts", "main.tsx", "index.ts", "index.js", "App.tsx"
+            ])
 
         valid_paths = []
         for c in candidates:
@@ -233,9 +256,37 @@ class HybridRetrievalEngine:
         w_exact = settings.RETRIEVAL_EXACT_WEIGHT
         w_graph = 0.15
 
-        # Determine if query asks about code implementation/architecture/auth/routes/models
-        is_code_query = bool(re.search(
-            r"\b(architecture|route|routes|endpoint|endpoints|database|model|models|auth|authentication|jwt|token|function|functions|class|classes|method|methods|service|services|repository|controller|implement|implementation|module|modules|def|import)\b",
+        # Determine query intent and architectural layer focus
+        is_frontend_target = bool(re.search(
+            r"\b(frontend|react|ui|client|toast|modal|component|components|pages?|hooks?|views?|tsx|jsx|axios|vite|tailwindcss?)\b",
+            clean_query,
+            re.IGNORECASE
+        ))
+        is_backend_target = bool(re.search(
+            r"\b(backend|server|fastapi|api|endpoints?|routers?|services?|database|models?|sql|repositories|repository|migrations?|balance\s*deduction|alembic)\b",
+            clean_query,
+            re.IGNORECASE
+        ))
+        is_fullstack_flow = is_frontend_target and is_backend_target
+        is_entrypoint_query = bool(re.search(
+            r"\b(entrypoint|entry\s*point|application\s*entrypoint|fastapi\s*(?:app|application)\s*(?:is\s*)?initialized|where\s+routers\s+are\s+included|main\.py|main\.tsx)\b",
+            clean_query,
+            re.IGNORECASE
+        ))
+        is_config_query = bool(re.search(
+            r"\b(env|environment|settings|config|vite_api_url|database_url|\.env|\.env\.example|basesettings)\b",
+            clean_query,
+            re.IGNORECASE
+        ))
+        is_doc_query = bool(re.search(
+            r"\b(docs?|documentation|readme|prd|spec|architecture\s*doc)\b",
+            clean_query,
+            re.IGNORECASE
+        ))
+
+        # Comprehensive code query check: implementation, functions, flow, prevent, transfer, models, etc.
+        is_code_query = not is_doc_query or bool(re.search(
+            r"\b(architecture|route|routes|endpoint|endpoints|database|model|models|auth|authentication|jwt|token|function|functions|class|classes|method|methods|service|services|repository|controller|implement|implementation|module|modules|def|import|export|prevent|transfer|balance|deduction|create|update|delete|insert|entrypoint)\b",
             clean_query,
             re.IGNORECASE
         ))
@@ -268,20 +319,24 @@ class HybridRetrievalEngine:
 
             # Code vs Documentation/Tests ranking adjustment
             p_lower = chunk.file_path.lower().replace("\\", "/")
+            is_example = (
+                p_lower.startswith(("docs_src/", "examples/", "samples/"))
+                or "/docs_src/" in p_lower
+                or "/examples/" in p_lower
+            )
             is_doc = (
                 p_lower.startswith("docs/")
                 or p_lower.startswith("doc/")
                 or "/docs/" in p_lower
                 or "/doc/" in p_lower
                 or p_lower.endswith((".rst", ".md", ".markdown", ".adoc", ".txt"))
-                or "tutorial" in p_lower
+                or ("tutorial" in p_lower and not is_example)
             )
             is_test_or_upload = (
-                p_lower.startswith(("tests/", "test/", "uploads/", "examples/", "fixtures/"))
+                p_lower.startswith(("tests/", "test/", "uploads/", "fixtures/"))
                 or "/tests/" in p_lower
                 or "/test/" in p_lower
                 or "/uploads/" in p_lower
-                or "/examples/" in p_lower
                 or "/fixtures/" in p_lower
                 or p_lower.endswith(("_test.py", "_test.ts", "_test.js", "test.py"))
             )
@@ -306,20 +361,50 @@ class HybridRetrievalEngine:
             elif is_test_query and is_test_or_upload:
                 final_score += 0.30
             elif is_code_query:
+                is_example_query = bool(re.search(r'\b(example|tutorial|sample|demo)\b', clean_query, re.IGNORECASE))
+                repo_pkg_prefix = f"{(repo.name or '').lower()}/" if repo and repo.name else ""
+                is_core_pkg = bool(repo_pkg_prefix and p_lower.startswith(repo_pkg_prefix)) or p_lower.startswith("fastapi/")
+
                 if is_test_or_upload and not is_test_query:
-                    # Deprioritize test/upload files so core application source code ranks higher
-                    final_score *= 0.35
+                    final_score *= 0.60
+                elif is_example and not is_example_query:
+                    # Tutorial examples should not dominate core architecture/framework queries
+                    final_score *= 0.40
                 elif is_code_file:
-                    # Boost actual source code files
                     final_score += 0.20
+                    if is_core_pkg:
+                        final_score += 0.20
                     if chunk.symbol_name:
                         final_score += 0.10
-                elif is_doc:
-                    # Moderate documentation score so docs do not outrank source code
-                    final_score *= 0.65
+                elif is_doc and not is_doc_query:
+                    final_score *= 0.70
             else:
                 if is_code_file and chunk.symbol_name:
                     final_score += 0.05
+                elif is_doc and not is_doc_query:
+                    final_score *= 0.70
+
+            # Intent-aware test and doc adjustments (single pass, no compounding)
+            if is_test_query and is_test_or_upload:
+                final_score += 0.25
+            elif is_doc_query and is_doc:
+                final_score += 0.25
+
+            # Universal entrypoint query prioritization
+            if is_entrypoint_query and any(p_lower.endswith(ep) or f"/{ep}" in p_lower for ep in ["main.py", "main.tsx", "main.go", "app.py", "app.tsx", "index.ts", "server.py"]):
+                final_score += 0.20
+
+            # Configuration query prioritization
+            if is_config_query and any(cf in p_lower for cf in [".env", "config", "settings.py", "settings.ts", "database.py"]):
+                final_score += 0.20
+
+            # Soft layer directional alignment (gentle preference without destructive penalties)
+            if is_frontend_target and not is_backend_target:
+                if p_lower.startswith(("frontend/", "src/", "client/", "ui/")) or "/frontend/" in p_lower or "/src/" in p_lower:
+                    final_score += 0.10
+            elif is_backend_target and not is_frontend_target:
+                if p_lower.startswith(("backend/", "app/", "server/", "api/")) or "/backend/" in p_lower or "/app/" in p_lower:
+                    final_score += 0.10
 
             chunk.score = round(min(1.0, max(0.0, final_score)), 4)
             chunk.channels = channels
@@ -327,6 +412,17 @@ class HybridRetrievalEngine:
 
         # Sort descending by fused score
         scored_results.sort(key=lambda x: x.score, reverse=True)
+
+        # Dynamic adaptive score thresholding: prune distant tail distractors to elevate retrieval precision
+        if scored_results:
+            max_score = scored_results[0].score
+            # Chunks must achieve at least 65% of top candidate score, minimum floor 0.35,
+            # while guaranteeing at least min(2, len(scored_results)) chunks are retained.
+            adaptive_threshold = max(0.35, max_score * 0.65)
+            scored_results = [
+                c for idx, c in enumerate(scored_results)
+                if c.score >= adaptive_threshold or idx < 2
+            ]
 
         # 7. Stable Deduplication by File Path and Line Range, with Per-File Diversity
         seen_chunks: Set[Tuple[int, str, int, int]] = set()
@@ -393,10 +489,12 @@ class HybridRetrievalEngine:
                 repo_tokens.update(re.findall(r"[a-zA-Z0-9]+", repo_record.full_name.lower()))
         excluded_words = GENERIC_QUERY_WORDS | repo_tokens | cls.STOPWORDS
 
+        # Exclude broad high-level directory names from file stem search to avoid matching every file in repo
+        DIR_STEM_EXCLUSIONS = {"backend", "frontend", "src", "app", "apps", "lib", "packages", "upload", "uploads"}
         clean_words = re.findall(r"[a-zA-Z0-9_]+", query.lower())
         meaningful_stems = [
             w for w in set(clean_words)
-            if len(w) >= 4 and w not in excluded_words
+            if len(w) >= 4 and w not in excluded_words and w not in DIR_STEM_EXCLUSIONS
         ]
         if meaningful_stems:
             matching_files = (
@@ -441,6 +539,60 @@ class HybridRetrievalEngine:
                 symbol_names = [s[0] for s in matching_symbols]
                 if symbol_names:
                     conditions.append(CodeChunk.code_symbol.in_(symbol_names))
+
+        # Extract exact code identifiers: PascalCase, snake_case, and UPPER_CASE constants
+        code_identifiers = set()
+        for id_match in re.findall(r'\b[A-Z][a-zA-Z0-9_]{2,}\b', query):  # PascalCase or UPPER_CASE
+            if id_match.lower() not in excluded_words:
+                code_identifiers.add(id_match)
+        for id_match in re.findall(r'\b[a-z0-9]+(?:_[a-z0-9]+)+\b', query):  # snake_case
+            if id_match.lower() not in excluded_words:
+                code_identifiers.add(id_match)
+
+        # Include concept stems for exact symbol lookup
+        query_lower = query.lower()
+        matched_stems = set()
+        for cstem, aliases in cls.CONCEPT_STEM_MAPPING.items():
+            if any(re.search(rf'\b{re.escape(a)}\b', query_lower) for a in aliases):
+                matched_stems.add(cstem)
+                matched_stems.update([a for a in aliases if len(a) >= 4][:3])
+
+        if code_identifiers:
+            # Fast indexed search on code_symbol (sub-5ms B-tree index, zero chunk_text.ilike full table scan)
+            ident_chunks = (
+                db.query(CodeChunk.id)
+                .filter(
+                    CodeChunk.repository_id == repo_id,
+                    CodeChunk.code_symbol.in_(code_identifiers)
+                )
+                .limit(15)
+                .all()
+            )
+            for ic in ident_chunks:
+                conditions.append(CodeChunk.id == ic[0])
+
+            # Also check CodeSymbol table
+            sym_matches = (
+                db.query(CodeSymbol.name)
+                .filter(CodeSymbol.repository_id == repo_id, CodeSymbol.name.in_(code_identifiers))
+                .limit(15)
+                .all()
+            )
+            for sm in sym_matches:
+                conditions.append(CodeChunk.code_symbol == sm[0])
+
+        if matched_stems:
+            stem_symbols = (
+                db.query(CodeSymbol.name)
+                .filter(
+                    CodeSymbol.repository_id == repo_id,
+                    or_(*[CodeSymbol.name.ilike(f"%{st}%") for st in list(matched_stems)[:4]])
+                )
+                .limit(10)
+                .all()
+            )
+            for ss in stem_symbols:
+                conditions.append(CodeChunk.code_symbol == ss[0])
 
         for w in words:
             if "." in w or "/" in w:
@@ -502,12 +654,26 @@ class HybridRetrievalEngine:
         domain_words = [w for w in words if w not in excluded_words]
         search_words = domain_words if domain_words else [w for w in words if w not in cls.STOPWORDS]
 
+        # Add concept stems into keyword search
+        query_lower = query.lower()
+        for cstem, aliases in cls.CONCEPT_STEM_MAPPING.items():
+            if any(re.search(rf'\b{re.escape(a)}\b', query_lower) for a in aliases):
+                if cstem not in search_words:
+                    search_words.append(cstem)
+
         q = db.query(CodeChunk).filter(CodeChunk.repository_id == repo_id)
         if language:
             q = q.filter(CodeChunk.language == language)
 
-        # Filter by tokens matching chunk text (up to 12 meaningful keywords)
-        keyword_filters = [CodeChunk.chunk_text.ilike(f"%{w}%") for w in search_words[:12]]
+        # Multi-field keyword filter: chunk text, file path, and symbol name
+        keyword_filters = [
+            or_(
+                CodeChunk.chunk_text.ilike(f"%{w}%"),
+                CodeChunk.file_path.ilike(f"%{w}%"),
+                CodeChunk.code_symbol.ilike(f"%{w}%")
+            )
+            for w in search_words[:12]
+        ]
         matching_chunks = (
             q.filter(or_(*keyword_filters))
             .order_by(

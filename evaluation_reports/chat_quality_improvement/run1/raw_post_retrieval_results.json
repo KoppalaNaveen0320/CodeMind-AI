@@ -1,0 +1,2896 @@
+{
+  "metrics": {
+    "total_questions_evaluated": 20,
+    "total_chunks_retrieved": 172,
+    "retrieval_precision": {
+      "numerator": 69,
+      "denominator": 172,
+      "percentage": 40.12
+    },
+    "retrieval_recall": {
+      "numerator": 25,
+      "denominator": 46,
+      "percentage": 54.35
+    },
+    "wrong_repository_rate": {
+      "numerator": 0,
+      "denominator": 172,
+      "percentage": 0.0
+    },
+    "relevant_source_coverage": {
+      "numerator": 8,
+      "denominator": 18,
+      "percentage": 44.44
+    },
+    "duplicate_context_rate": {
+      "numerator": 0,
+      "denominator": 172,
+      "percentage": 0.0
+    },
+    "average_retrieval_latency_ms": 1081.47,
+    "total_estimated_tokens": 46946
+  },
+  "question_evaluations": [
+    {
+      "id": "ED-01",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "Entrypoint & File Discovery",
+      "question": "Identify the primary application entrypoint for the expertdecision backend. Show how the FastAPI application is initialized and where routers are included.",
+      "is_adversarial_absent": false,
+      "latency_ms": 8274.47,
+      "retrieved_count": 8,
+      "relevant_count": 3,
+      "irrelevant_count": 5,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 39386,
+          "repository_id": 46,
+          "file_path": "backend/app/main.py",
+          "symbol_name": "home",
+          "start_line": 84,
+          "end_line": 88,
+          "score": 1.0,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 47
+        },
+        {
+          "chunk_id": 39385,
+          "repository_id": 46,
+          "file_path": "backend/app/main.py",
+          "symbol_name": "_async_init",
+          "start_line": 40,
+          "end_line": 47,
+          "score": 1.0,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 121
+        },
+        {
+          "chunk_id": 39384,
+          "repository_id": 46,
+          "file_path": "backend/app/main.py",
+          "symbol_name": "startup_db_init",
+          "start_line": 39,
+          "end_line": 49,
+          "score": 1.0,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 144
+        },
+        {
+          "chunk_id": 39840,
+          "repository_id": 46,
+          "file_path": "backend/app/services/ai_support_service.py",
+          "symbol_name": "_generate_ai_response_internal",
+          "start_line": 356,
+          "end_line": 393,
+          "score": 0.8512,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 439
+        },
+        {
+          "chunk_id": 39857,
+          "repository_id": 46,
+          "file_path": "backend/app/services/ai_support_service.py",
+          "symbol_name": "_generate_tailored_decision_description",
+          "start_line": 1150,
+          "end_line": 1209,
+          "score": 0.8492,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 2545
+        },
+        {
+          "chunk_id": 39692,
+          "repository_id": 46,
+          "file_path": "backend/app/repositories/decision_repository.py",
+          "symbol_name": "DecisionRepository.delete_decision",
+          "start_line": 795,
+          "end_line": 854,
+          "score": 0.75,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 648
+        },
+        {
+          "chunk_id": 39668,
+          "repository_id": 46,
+          "file_path": "backend/app/repositories/decision_repository.py",
+          "symbol_name": "DecisionRepository",
+          "start_line": 778,
+          "end_line": 837,
+          "score": 0.75,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 606
+        },
+        {
+          "chunk_id": 39573,
+          "repository_id": 46,
+          "file_path": "backend/app/core/security.py",
+          "symbol_name": "verify_password",
+          "start_line": 104,
+          "end_line": 123,
+          "score": 0.75,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 161
+        }
+      ]
+    },
+    {
+      "id": "ED-03",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "Cross-File Implementation (API -> Service)",
+      "question": "Explain how backend/app/api/decision_api.py interacts with the service layer. Which service class does it instantiate or inject?",
+      "is_adversarial_absent": false,
+      "latency_ms": 753.84,
+      "retrieved_count": 12,
+      "relevant_count": 6,
+      "irrelevant_count": 6,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 39902,
+          "repository_id": 46,
+          "file_path": "backend/app/services/decision_service.py",
+          "symbol_name": "DecisionService.create_decision_full",
+          "start_line": 12,
+          "end_line": 13,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 65
+        },
+        {
+          "chunk_id": 39901,
+          "repository_id": 46,
+          "file_path": "backend/app/services/decision_service.py",
+          "symbol_name": "DecisionService.create_decision",
+          "start_line": 8,
+          "end_line": 9,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 58
+        },
+        {
+          "chunk_id": 39400,
+          "repository_id": 46,
+          "file_path": "backend/app/api/decision_api.py",
+          "symbol_name": "get_decision",
+          "start_line": 96,
+          "end_line": 109,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 235
+        },
+        {
+          "chunk_id": 39399,
+          "repository_id": 46,
+          "file_path": "backend/app/api/decision_api.py",
+          "symbol_name": "get_all_decisions",
+          "start_line": 86,
+          "end_line": 93,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 89
+        },
+        {
+          "chunk_id": 39398,
+          "repository_id": 46,
+          "file_path": "backend/app/api/decision_api.py",
+          "symbol_name": "create_decision_full",
+          "start_line": 81,
+          "end_line": 82,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 59
+        },
+        {
+          "chunk_id": 39397,
+          "repository_id": 46,
+          "file_path": "backend/app/api/decision_api.py",
+          "symbol_name": "create_decision",
+          "start_line": 77,
+          "end_line": 78,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 54
+        },
+        {
+          "chunk_id": 39388,
+          "repository_id": 46,
+          "file_path": "backend/app/api/alternative_api.py",
+          "symbol_name": "get_decision_alternatives",
+          "start_line": 19,
+          "end_line": 20,
+          "score": 0.8911,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 59
+        },
+        {
+          "chunk_id": 39651,
+          "repository_id": 46,
+          "file_path": "backend/app/repositories/decision_repository.py",
+          "symbol_name": "DecisionRepository",
+          "start_line": 13,
+          "end_line": 72,
+          "score": 0.8856,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 685
+        },
+        {
+          "chunk_id": 39978,
+          "repository_id": 46,
+          "file_path": "backend/app/services/role_service.py",
+          "symbol_name": "RoleService",
+          "start_line": 98,
+          "end_line": 126,
+          "score": 0.75,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 223
+        },
+        {
+          "chunk_id": 39977,
+          "repository_id": 46,
+          "file_path": "backend/app/services/role_service.py",
+          "symbol_name": "RoleService",
+          "start_line": 53,
+          "end_line": 112,
+          "score": 0.75,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 406
+        },
+        {
+          "chunk_id": 39975,
+          "repository_id": 46,
+          "file_path": "backend/app/services/review_service.py",
+          "symbol_name": "ReviewService.get_reviews_by_decision",
+          "start_line": 24,
+          "end_line": 31,
+          "score": 0.75,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 75
+        },
+        {
+          "chunk_id": 39974,
+          "repository_id": 46,
+          "file_path": "backend/app/services/review_service.py",
+          "symbol_name": "ReviewService.get_all_reviews",
+          "start_line": 20,
+          "end_line": 21,
+          "score": 0.75,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 57
+        }
+      ]
+    },
+    {
+      "id": "ED-04",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "Multi-File Execution Trace",
+      "question": "Trace the complete execution flow of creating a decision alternative: from endpoint handler in alternative_api.py down to database insertion.",
+      "is_adversarial_absent": false,
+      "latency_ms": 1060.93,
+      "retrieved_count": 8,
+      "relevant_count": 7,
+      "irrelevant_count": 1,
+      "missing_expected_files": [
+        "backend/app/repositories/alternative_repository.py"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 39881,
+          "repository_id": 46,
+          "file_path": "backend/app/services/alternative_service.py",
+          "symbol_name": "AlternativeService.get_by_decision",
+          "start_line": 9,
+          "end_line": 10,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 64
+        },
+        {
+          "chunk_id": 39880,
+          "repository_id": 46,
+          "file_path": "backend/app/services/alternative_service.py",
+          "symbol_name": "AlternativeService",
+          "start_line": 7,
+          "end_line": 63,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 571
+        },
+        {
+          "chunk_id": 39746,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/alternative.py",
+          "symbol_name": "AlternativeResponse",
+          "start_line": 20,
+          "end_line": 26,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 57
+        },
+        {
+          "chunk_id": 39744,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/alternative.py",
+          "symbol_name": "AlternativeCreate",
+          "start_line": 14,
+          "end_line": 15,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 37
+        },
+        {
+          "chunk_id": 39583,
+          "repository_id": 46,
+          "file_path": "backend/app/models/alternative.py",
+          "symbol_name": "Alternative",
+          "start_line": 5,
+          "end_line": 23,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 186
+        },
+        {
+          "chunk_id": 39397,
+          "repository_id": 46,
+          "file_path": "backend/app/api/decision_api.py",
+          "symbol_name": "create_decision",
+          "start_line": 77,
+          "end_line": 78,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 54
+        },
+        {
+          "chunk_id": 39391,
+          "repository_id": 46,
+          "file_path": "backend/app/api/alternative_api.py",
+          "symbol_name": "delete_alternative",
+          "start_line": 37,
+          "end_line": 41,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 89
+        },
+        {
+          "chunk_id": 39390,
+          "repository_id": 46,
+          "file_path": "backend/app/api/alternative_api.py",
+          "symbol_name": "update_alternative",
+          "start_line": 30,
+          "end_line": 34,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 87
+        }
+      ]
+    },
+    {
+      "id": "ED-05",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "Direct Caller Evidence & Session Factory",
+      "question": "Identify the function responsible for database session creation in backend/app/database/session.py. List at least 3 distinct API router files that call or depend on it.",
+      "is_adversarial_absent": false,
+      "latency_ms": 794.17,
+      "retrieved_count": 8,
+      "relevant_count": 1,
+      "irrelevant_count": 7,
+      "missing_expected_files": [
+        "backend/app/database/session.py",
+        "backend/app/api/decision_api.py",
+        "backend/app/api/alternative_api.py",
+        "backend/app/api/audit_api.py"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 39532,
+          "repository_id": 46,
+          "file_path": "backend/app/api/team_api.py",
+          "symbol_name": "get_team_employees",
+          "start_line": 106,
+          "end_line": 110,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 54
+        },
+        {
+          "chunk_id": 39478,
+          "repository_id": 46,
+          "file_path": "backend/app/api/role_api.py",
+          "symbol_name": "get_all_roles",
+          "start_line": 32,
+          "end_line": 35,
+          "score": 0.9181,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 43
+        },
+        {
+          "chunk_id": 39979,
+          "repository_id": 46,
+          "file_path": "backend/app/services/role_service.py",
+          "symbol_name": "RoleService.get_all_roles",
+          "start_line": 11,
+          "end_line": 12,
+          "score": 0.9097,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 45
+        },
+        {
+          "chunk_id": 39581,
+          "repository_id": 46,
+          "file_path": "backend/app/database/connection.py",
+          "symbol_name": "get_db",
+          "start_line": 270,
+          "end_line": 275,
+          "score": 0.909,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 43
+        },
+        {
+          "chunk_id": 39480,
+          "repository_id": 46,
+          "file_path": "backend/app/api/role_api.py",
+          "symbol_name": "create_role",
+          "start_line": 70,
+          "end_line": 77,
+          "score": 0.9071,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 54
+        },
+        {
+          "chunk_id": 39541,
+          "repository_id": 46,
+          "file_path": "backend/app/api/user_api.py",
+          "symbol_name": "get_pending_users",
+          "start_line": 73,
+          "end_line": 74,
+          "score": 0.907,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 45
+        },
+        {
+          "chunk_id": 39473,
+          "repository_id": 46,
+          "file_path": "backend/app/api/replay_api.py",
+          "symbol_name": "get_all_replays",
+          "start_line": 40,
+          "end_line": 43,
+          "score": 0.9066,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 46
+        },
+        {
+          "chunk_id": 39527,
+          "repository_id": 46,
+          "file_path": "backend/app/api/team_api.py",
+          "symbol_name": "get_all_teams",
+          "start_line": 49,
+          "end_line": 52,
+          "score": 0.9063,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 43
+        }
+      ]
+    },
+    {
+      "id": "ED-06",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "Exact Identifier & Import Search",
+      "question": "Analyze the imports of backend/app/models/decision.py. Does it import from the repository layer or schemas?",
+      "is_adversarial_absent": false,
+      "latency_ms": 782.5,
+      "retrieved_count": 12,
+      "relevant_count": 11,
+      "irrelevant_count": 1,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 39598,
+          "repository_id": 46,
+          "file_path": "backend/app/models/decision.py",
+          "symbol_name": "Decision.approved_by_role",
+          "start_line": 137,
+          "end_line": 144,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 87
+        },
+        {
+          "chunk_id": 39596,
+          "repository_id": 46,
+          "file_path": "backend/app/models/decision.py",
+          "symbol_name": "Decision.approved_by_name",
+          "start_line": 117,
+          "end_line": 124,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 77
+        },
+        {
+          "chunk_id": 39594,
+          "repository_id": 46,
+          "file_path": "backend/app/models/decision.py",
+          "symbol_name": "Decision.category_name",
+          "start_line": 76,
+          "end_line": 77,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 44
+        },
+        {
+          "chunk_id": 39592,
+          "repository_id": 46,
+          "file_path": "backend/app/models/decision.py",
+          "symbol_name": "Decision.creator_name",
+          "start_line": 65,
+          "end_line": 66,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 44
+        },
+        {
+          "chunk_id": 39400,
+          "repository_id": 46,
+          "file_path": "backend/app/api/decision_api.py",
+          "symbol_name": "get_decision",
+          "start_line": 96,
+          "end_line": 109,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 235
+        },
+        {
+          "chunk_id": 39776,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/decision.py",
+          "symbol_name": "DecisionRationaleResponse",
+          "start_line": 205,
+          "end_line": 216,
+          "score": 0.9344,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 134
+        },
+        {
+          "chunk_id": 39778,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/decision.py",
+          "symbol_name": "DecisionFullResponse",
+          "start_line": 229,
+          "end_line": 235,
+          "score": 0.9339,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 104
+        },
+        {
+          "chunk_id": 39777,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/decision.py",
+          "symbol_name": "DecisionRationaleUpdate",
+          "start_line": 218,
+          "end_line": 224,
+          "score": 0.9334,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 87
+        },
+        {
+          "chunk_id": 39766,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/decision.py",
+          "symbol_name": "ReviewerCreateForDecision",
+          "start_line": 68,
+          "end_line": 75,
+          "score": 0.9311,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 72
+        },
+        {
+          "chunk_id": 39677,
+          "repository_id": 46,
+          "file_path": "backend/app/repositories/decision_repository.py",
+          "symbol_name": "DecisionRepository.update_decision_full",
+          "start_line": 231,
+          "end_line": 290,
+          "score": 0.8816,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 775
+        },
+        {
+          "chunk_id": 39654,
+          "repository_id": 46,
+          "file_path": "backend/app/repositories/decision_repository.py",
+          "symbol_name": "DecisionRepository",
+          "start_line": 148,
+          "end_line": 207,
+          "score": 0.8809,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 656
+        },
+        {
+          "chunk_id": 39621,
+          "repository_id": 46,
+          "file_path": "backend/app/models/__init__.py",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 20,
+          "score": 0.7873,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 223
+        }
+      ]
+    },
+    {
+      "id": "ED-08",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "Database Model Discovery",
+      "question": "Identify the primary key, foreign keys, and relationships defined on the Decision model in backend/app/models/.",
+      "is_adversarial_absent": false,
+      "latency_ms": 840.56,
+      "retrieved_count": 8,
+      "relevant_count": 6,
+      "irrelevant_count": 2,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 39589,
+          "repository_id": 46,
+          "file_path": "backend/app/models/decision.py",
+          "symbol_name": "Decision",
+          "start_line": 8,
+          "end_line": 67,
+          "score": 0.8853,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 634
+        },
+        {
+          "chunk_id": 39593,
+          "repository_id": 46,
+          "file_path": "backend/app/models/decision.py",
+          "symbol_name": "Decision.creator_initials",
+          "start_line": 69,
+          "end_line": 73,
+          "score": 0.8742,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 77
+        },
+        {
+          "chunk_id": 39584,
+          "repository_id": 46,
+          "file_path": "backend/app/models/attachment.py",
+          "symbol_name": "Attachment",
+          "start_line": 6,
+          "end_line": 18,
+          "score": 0.8706,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 162
+        },
+        {
+          "chunk_id": 39600,
+          "repository_id": 46,
+          "file_path": "backend/app/models/decision_version.py",
+          "symbol_name": "DecisionVersion",
+          "start_line": 6,
+          "end_line": 41,
+          "score": 0.8673,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 400
+        },
+        {
+          "chunk_id": 39586,
+          "repository_id": 46,
+          "file_path": "backend/app/models/category.py",
+          "symbol_name": "Category",
+          "start_line": 5,
+          "end_line": 12,
+          "score": 0.8663,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 89
+        },
+        {
+          "chunk_id": 39776,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/decision.py",
+          "symbol_name": "DecisionRationaleResponse",
+          "start_line": 205,
+          "end_line": 216,
+          "score": 0.8604,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 134
+        },
+        {
+          "chunk_id": 39400,
+          "repository_id": 46,
+          "file_path": "backend/app/api/decision_api.py",
+          "symbol_name": "get_decision",
+          "start_line": 96,
+          "end_line": 109,
+          "score": 0.8593,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 235
+        },
+        {
+          "chunk_id": 39769,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/decision.py",
+          "symbol_name": "AttachmentResponse",
+          "start_line": 119,
+          "end_line": 128,
+          "score": 0.8593,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 69
+        }
+      ]
+    },
+    {
+      "id": "ED-10",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "Security & Auth Discovery",
+      "question": "How is user authentication implemented in expertdecision? Which file decodes JWT tokens and extracts user identity?",
+      "is_adversarial_absent": false,
+      "latency_ms": 706.54,
+      "retrieved_count": 8,
+      "relevant_count": 1,
+      "irrelevant_count": 7,
+      "missing_expected_files": [
+        "backend/app/core/security.py",
+        "backend/app/api/auth_api.py"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 39568,
+          "repository_id": 46,
+          "file_path": "backend/app/core/auth.py",
+          "symbol_name": "create_access_token",
+          "start_line": 8,
+          "end_line": 31,
+          "score": 0.8486,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 163
+        },
+        {
+          "chunk_id": 39620,
+          "repository_id": 46,
+          "file_path": "backend/app/models/user.py",
+          "symbol_name": "VerificationCode",
+          "start_line": 56,
+          "end_line": 63,
+          "score": 0.8051,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 114
+        },
+        {
+          "chunk_id": 40041,
+          "repository_id": 46,
+          "file_path": "backend/app/services/user_service.py",
+          "symbol_name": "UserService.login_user",
+          "start_line": 237,
+          "end_line": 296,
+          "score": 0.7995,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 607
+        },
+        {
+          "chunk_id": 39803,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/settings_schema.py",
+          "symbol_name": "ConfirmPasswordChangeRequest",
+          "start_line": 98,
+          "end_line": 102,
+          "score": 0.6104,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 60
+        },
+        {
+          "chunk_id": 39551,
+          "repository_id": 46,
+          "file_path": "backend/app/api/user_api.py",
+          "symbol_name": "check_verification_code",
+          "start_line": 224,
+          "end_line": 228,
+          "score": 0.6077,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 67
+        },
+        {
+          "chunk_id": 40161,
+          "repository_id": 46,
+          "file_path": "frontend/app.py",
+          "symbol_name": "mark_all_read",
+          "start_line": 1388,
+          "end_line": 1398,
+          "score": 0.6034,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 149
+        },
+        {
+          "chunk_id": 40136,
+          "repository_id": 46,
+          "file_path": "frontend/app.py",
+          "symbol_name": "proxy_admin_update_credentials",
+          "start_line": 824,
+          "end_line": 844,
+          "score": 0.6033,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 288
+        },
+        {
+          "chunk_id": 39802,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/settings_schema.py",
+          "symbol_name": "InitiatePasswordChangeRequest",
+          "start_line": 92,
+          "end_line": 96,
+          "score": 0.6031,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 60
+        }
+      ]
+    },
+    {
+      "id": "ED-12",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "Configuration Discovery",
+      "question": "How are environment variables and database URLs loaded in backend/app/config/? Does it use Pydantic BaseSettings?",
+      "is_adversarial_absent": false,
+      "latency_ms": 1032.64,
+      "retrieved_count": 8,
+      "relevant_count": 3,
+      "irrelevant_count": 5,
+      "missing_expected_files": [
+        "backend/app/config/config.py",
+        "backend/app/config/database.py"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 39800,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/settings_schema.py",
+          "symbol_name": "Config",
+          "start_line": 83,
+          "end_line": 84,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 31
+        },
+        {
+          "chunk_id": 39760,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/dashboard.py",
+          "symbol_name": "Config",
+          "start_line": 130,
+          "end_line": 131,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 30
+        },
+        {
+          "chunk_id": 39758,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/dashboard.py",
+          "symbol_name": "Config",
+          "start_line": 85,
+          "end_line": 86,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 30
+        },
+        {
+          "chunk_id": 39567,
+          "repository_id": 46,
+          "file_path": "backend/app/config/settings.py",
+          "symbol_name": "Settings",
+          "start_line": 22,
+          "end_line": 33,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 108
+        },
+        {
+          "chunk_id": 39566,
+          "repository_id": 46,
+          "file_path": "backend/app/config/settings.py",
+          "symbol_name": "_find_env_file",
+          "start_line": 5,
+          "end_line": 19,
+          "score": 1.0,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 234
+        },
+        {
+          "chunk_id": 39575,
+          "repository_id": 46,
+          "file_path": "backend/app/database/base.py",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 3,
+          "score": 0.9594,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 30
+        },
+        {
+          "chunk_id": 39385,
+          "repository_id": 46,
+          "file_path": "backend/app/main.py",
+          "symbol_name": "_async_init",
+          "start_line": 40,
+          "end_line": 47,
+          "score": 0.8705,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 121
+        },
+        {
+          "chunk_id": 39484,
+          "repository_id": 46,
+          "file_path": "backend/app/api/settings_api.py",
+          "symbol_name": "get_settings_options",
+          "start_line": 95,
+          "end_line": 121,
+          "score": 0.87,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 262
+        }
+      ]
+    },
+    {
+      "id": "ED-13",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "External Integration Discovery",
+      "question": "How does expertdecision integrate with email or notification services (e.g. in email_api.py or notification_api.py)?",
+      "is_adversarial_absent": false,
+      "latency_ms": 815.21,
+      "retrieved_count": 8,
+      "relevant_count": 6,
+      "irrelevant_count": 2,
+      "missing_expected_files": [
+        "backend/app/api/notification_api.py"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 39957,
+          "repository_id": 46,
+          "file_path": "backend/app/services/notification_service.py",
+          "symbol_name": "NotificationService._async_decision_email",
+          "start_line": 171,
+          "end_line": 183,
+          "score": 0.8942,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 194
+        },
+        {
+          "chunk_id": 39951,
+          "repository_id": 46,
+          "file_path": "backend/app/services/notification_service.py",
+          "symbol_name": "NotificationService.create_notification",
+          "start_line": 15,
+          "end_line": 74,
+          "score": 0.8908,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 723
+        },
+        {
+          "chunk_id": 39866,
+          "repository_id": 46,
+          "file_path": "backend/app/services/ai_support_service.py",
+          "symbol_name": "_answer_with_knowledge_engine",
+          "start_line": 1539,
+          "end_line": 1598,
+          "score": 0.8777,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 941
+        },
+        {
+          "chunk_id": 39940,
+          "repository_id": 46,
+          "file_path": "backend/app/services/email_service.py",
+          "symbol_name": "send_notification_email",
+          "start_line": 1201,
+          "end_line": 1256,
+          "score": 0.8723,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 759
+        },
+        {
+          "chunk_id": 39407,
+          "repository_id": 46,
+          "file_path": "backend/app/api/decision_api.py",
+          "symbol_name": "send_reminder",
+          "start_line": 197,
+          "end_line": 200,
+          "score": 0.8718,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 93
+        },
+        {
+          "chunk_id": 39463,
+          "repository_id": 46,
+          "file_path": "backend/app/api/email_api.py",
+          "symbol_name": "update_and_resend_email",
+          "start_line": 219,
+          "end_line": 266,
+          "score": 0.85,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 599
+        },
+        {
+          "chunk_id": 39462,
+          "repository_id": 46,
+          "file_path": "backend/app/api/email_api.py",
+          "symbol_name": "update_and_resend_email",
+          "start_line": 174,
+          "end_line": 233,
+          "score": 0.85,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 681
+        },
+        {
+          "chunk_id": 39456,
+          "repository_id": 46,
+          "file_path": "backend/app/api/email_api.py",
+          "symbol_name": "send_email",
+          "start_line": 67,
+          "end_line": 115,
+          "score": 0.85,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 594
+        }
+      ]
+    },
+    {
+      "id": "ED-19",
+      "repo_id": 46,
+      "repo_name": "expertdecision",
+      "requirement_type": "Nonexistent / Adversarial Entity",
+      "question": "How does DecisionBlockchainConsensusService validate voting blocks in expertdecision?",
+      "is_adversarial_absent": true,
+      "latency_ms": 731.97,
+      "retrieved_count": 8,
+      "relevant_count": 0,
+      "irrelevant_count": 8,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 40145,
+          "repository_id": 46,
+          "file_path": "frontend/app.py",
+          "symbol_name": "invalidate_decision_caches",
+          "start_line": 1038,
+          "end_line": 1044,
+          "score": 0.8578,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 79
+        },
+        {
+          "chunk_id": 39909,
+          "repository_id": 46,
+          "file_path": "backend/app/services/decision_service.py",
+          "symbol_name": "DecisionService.verify_decision_integrity",
+          "start_line": 42,
+          "end_line": 43,
+          "score": 0.6117,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 66
+        },
+        {
+          "chunk_id": 39696,
+          "repository_id": 46,
+          "file_path": "backend/app/repositories/decision_repository.py",
+          "symbol_name": "DecisionRepository.verify_decision_integrity",
+          "start_line": 920,
+          "end_line": 928,
+          "score": 0.6097,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 141
+        },
+        {
+          "chunk_id": 39671,
+          "repository_id": 46,
+          "file_path": "backend/app/repositories/decision_repository.py",
+          "symbol_name": "DecisionRepository",
+          "start_line": 913,
+          "end_line": 928,
+          "score": 0.6043,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 166
+        },
+        {
+          "chunk_id": 39863,
+          "repository_id": 46,
+          "file_path": "backend/app/services/ai_support_service.py",
+          "symbol_name": "_answer_with_knowledge_engine",
+          "start_line": 1404,
+          "end_line": 1463,
+          "score": 0.5902,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 963
+        },
+        {
+          "chunk_id": 40290,
+          "repository_id": 46,
+          "file_path": "frontend/static/js/decision_details.js",
+          "symbol_name": "renderApprovalChain",
+          "start_line": 169,
+          "end_line": 169,
+          "score": 0.5883,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 32
+        },
+        {
+          "chunk_id": 39811,
+          "repository_id": 46,
+          "file_path": "backend/app/schemas/support_schema.py",
+          "symbol_name": "AiSupportChatResponse",
+          "start_line": 47,
+          "end_line": 51,
+          "score": 0.5865,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 71
+        },
+        {
+          "chunk_id": 39905,
+          "repository_id": 46,
+          "file_path": "backend/app/services/decision_service.py",
+          "symbol_name": "DecisionService.update_decision",
+          "start_line": 24,
+          "end_line": 25,
+          "score": 0.5831,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 66
+        }
+      ]
+    },
+    {
+      "id": "RP-01",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "Entrypoint & File Discovery",
+      "question": "Identify the frontend entrypoint and the backend entrypoint in RewardPoints Transfer. Show main.tsx and backend/app/main.py.",
+      "is_adversarial_absent": false,
+      "latency_ms": 599.91,
+      "retrieved_count": 8,
+      "relevant_count": 3,
+      "irrelevant_count": 5,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 41035,
+          "repository_id": 47,
+          "file_path": "frontend/src/main.tsx",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 10,
+          "score": 1.0,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 67
+        },
+        {
+          "chunk_id": 40855,
+          "repository_id": 47,
+          "file_path": "backend/app/main.py",
+          "symbol_name": "create_application",
+          "start_line": 25,
+          "end_line": 55,
+          "score": 1.0,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 253
+        },
+        {
+          "chunk_id": 41032,
+          "repository_id": 47,
+          "file_path": "frontend/src/App.tsx",
+          "symbol_name": null,
+          "start_line": 46,
+          "end_line": 91,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 325
+        },
+        {
+          "chunk_id": 40854,
+          "repository_id": 47,
+          "file_path": "backend/app/main.py",
+          "symbol_name": "lifespan",
+          "start_line": 13,
+          "end_line": 22,
+          "score": 1.0,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": true,
+          "tokens_est": 139
+        },
+        {
+          "chunk_id": 41031,
+          "repository_id": 47,
+          "file_path": "frontend/src/App.tsx",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 60,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 498
+        },
+        {
+          "chunk_id": 40968,
+          "repository_id": 47,
+          "file_path": "backend/app/models/transfer.py",
+          "symbol_name": "Transfer",
+          "start_line": 13,
+          "end_line": 72,
+          "score": 0.8219,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 507
+        },
+        {
+          "chunk_id": 41062,
+          "repository_id": 47,
+          "file_path": "frontend/src/layouts/AppLayout.tsx",
+          "symbol_name": null,
+          "start_line": 46,
+          "end_line": 105,
+          "score": 0.7424,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 568
+        },
+        {
+          "chunk_id": 41000,
+          "repository_id": 47,
+          "file_path": "backend/app/schemas/transfer.py",
+          "symbol_name": "TransferResponse",
+          "start_line": 56,
+          "end_line": 71,
+          "score": 0.8131,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 125
+        }
+      ]
+    },
+    {
+      "id": "RP-03",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "API Client & Exact Identifier Search",
+      "question": "In frontend/src/services/api.ts, how is the Axios HTTP client configured (base URL, headers, interceptors)?",
+      "is_adversarial_absent": false,
+      "latency_ms": 636.23,
+      "retrieved_count": 8,
+      "relevant_count": 2,
+      "irrelevant_count": 6,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 41097,
+          "repository_id": 47,
+          "file_path": "frontend/src/services/api.ts",
+          "symbol_name": "ApiService",
+          "start_line": 210,
+          "end_line": 210,
+          "score": 0.9683,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 25
+        },
+        {
+          "chunk_id": 40934,
+          "repository_id": 47,
+          "file_path": "backend/app/core/error_handlers.py",
+          "symbol_name": "http_exception_handler",
+          "start_line": 38,
+          "end_line": 70,
+          "score": 0.5865,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 326
+        },
+        {
+          "chunk_id": 41027,
+          "repository_id": 47,
+          "file_path": "frontend/vite.config.ts",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 17,
+          "score": 0.6803,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 100
+        },
+        {
+          "chunk_id": 40994,
+          "repository_id": 47,
+          "file_path": "backend/app/schemas/common.py",
+          "symbol_name": "HealthResponse",
+          "start_line": 20,
+          "end_line": 26,
+          "score": 0.5805,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 75
+        },
+        {
+          "chunk_id": 41096,
+          "repository_id": 47,
+          "file_path": "frontend/src/services/api.ts",
+          "symbol_name": "mapBackendStudentToUser",
+          "start_line": 183,
+          "end_line": 183,
+          "score": 0.65,
+          "channels": [
+            "exact",
+            "keyword"
+          ],
+          "is_relevant": true,
+          "tokens_est": 40
+        },
+        {
+          "chunk_id": 41010,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService",
+          "start_line": 109,
+          "end_line": 168,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 704
+        },
+        {
+          "chunk_id": 41071,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/DashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 91,
+          "end_line": 150,
+          "score": 0.6307,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 681
+        },
+        {
+          "chunk_id": 41009,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService",
+          "start_line": 64,
+          "end_line": 123,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 625
+        }
+      ]
+    },
+    {
+      "id": "RP-04",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "Cross-File Implementation Flow",
+      "question": "Trace a points transfer request from the React UI (TransferForm or TransferModal) -> API client -> FastAPI endpoint -> balance deduction in database.",
+      "is_adversarial_absent": false,
+      "latency_ms": 584.99,
+      "retrieved_count": 8,
+      "relevant_count": 4,
+      "irrelevant_count": 4,
+      "missing_expected_files": [
+        "frontend/src/services/api.ts",
+        "backend/app/api/transfer_api.py",
+        "backend/app/services/point_service.py"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 41069,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/DashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 60,
+          "score": 0.6215,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 680
+        },
+        {
+          "chunk_id": 41020,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService.execute_transfer",
+          "start_line": 264,
+          "end_line": 296,
+          "score": 0.7107,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 385
+        },
+        {
+          "chunk_id": 41079,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/SendPointsPage.tsx",
+          "symbol_name": "handleAmountChange",
+          "start_line": 72,
+          "end_line": 72,
+          "score": 0.5462,
+          "channels": [
+            "exact",
+            "keyword"
+          ],
+          "is_relevant": true,
+          "tokens_est": 35
+        },
+        {
+          "chunk_id": 41019,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService.execute_transfer",
+          "start_line": 219,
+          "end_line": 278,
+          "score": 0.6882,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 591
+        },
+        {
+          "chunk_id": 41078,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/SendPointsPage.tsx",
+          "symbol_name": "handleSelectStudent",
+          "start_line": 66,
+          "end_line": 66,
+          "score": 0.5462,
+          "channels": [
+            "exact",
+            "keyword"
+          ],
+          "is_relevant": true,
+          "tokens_est": 51
+        },
+        {
+          "chunk_id": 41000,
+          "repository_id": 47,
+          "file_path": "backend/app/schemas/transfer.py",
+          "symbol_name": "TransferResponse",
+          "start_line": 56,
+          "end_line": 71,
+          "score": 0.6273,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 125
+        },
+        {
+          "chunk_id": 41088,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/StudentDashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 226,
+          "end_line": 285,
+          "score": 0.4462,
+          "channels": [
+            "exact",
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 648
+        },
+        {
+          "chunk_id": 41058,
+          "repository_id": 47,
+          "file_path": "frontend/src/context/NotificationContext.tsx",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 60,
+          "score": 0.4231,
+          "channels": [
+            "exact",
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 539
+        }
+      ]
+    },
+    {
+      "id": "RP-06",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "Component Dependencies & Imports",
+      "question": "Analyze the imports in frontend/src/pages/DashboardPage.tsx. Which hooks, components, and services does it depend on?",
+      "is_adversarial_absent": false,
+      "latency_ms": 640.4,
+      "retrieved_count": 12,
+      "relevant_count": 4,
+      "irrelevant_count": 8,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 41074,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/DashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 226,
+          "end_line": 244,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 216
+        },
+        {
+          "chunk_id": 41010,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService",
+          "start_line": 109,
+          "end_line": 168,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 704
+        },
+        {
+          "chunk_id": 41071,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/DashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 91,
+          "end_line": 150,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 681
+        },
+        {
+          "chunk_id": 41009,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService",
+          "start_line": 64,
+          "end_line": 123,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 625
+        },
+        {
+          "chunk_id": 41070,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/DashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 46,
+          "end_line": 105,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 712
+        },
+        {
+          "chunk_id": 41069,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/DashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 60,
+          "score": 1.0,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 680
+        },
+        {
+          "chunk_id": 41007,
+          "repository_id": 47,
+          "file_path": "backend/app/services/health_service.py",
+          "symbol_name": "HealthService.get_system_health",
+          "start_line": 12,
+          "end_line": 33,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 226
+        },
+        {
+          "chunk_id": 41083,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/StudentDashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 60,
+          "score": 0.914,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 504
+        },
+        {
+          "chunk_id": 41006,
+          "repository_id": 47,
+          "file_path": "backend/app/services/health_service.py",
+          "symbol_name": "HealthService",
+          "start_line": 10,
+          "end_line": 33,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 231
+        },
+        {
+          "chunk_id": 41097,
+          "repository_id": 47,
+          "file_path": "frontend/src/services/api.ts",
+          "symbol_name": "ApiService",
+          "start_line": 210,
+          "end_line": 210,
+          "score": 0.898,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 25
+        },
+        {
+          "chunk_id": 40929,
+          "repository_id": 47,
+          "file_path": "backend/app/core/dependencies.py",
+          "symbol_name": "require_admin",
+          "start_line": 75,
+          "end_line": 86,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 121
+        },
+        {
+          "chunk_id": 41050,
+          "repository_id": 47,
+          "file_path": "frontend/src/components/Sidebar.tsx",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 60,
+          "score": 0.8228,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 356
+        }
+      ]
+    },
+    {
+      "id": "RP-07",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "Context Provider & Circular Dependency",
+      "question": "Are there any circular imports between frontend context providers (AuthContext) and API service modules?",
+      "is_adversarial_absent": false,
+      "latency_ms": 602.02,
+      "retrieved_count": 8,
+      "relevant_count": 3,
+      "irrelevant_count": 5,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 41097,
+          "repository_id": 47,
+          "file_path": "frontend/src/services/api.ts",
+          "symbol_name": "ApiService",
+          "start_line": 210,
+          "end_line": 210,
+          "score": 0.9048,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 25
+        },
+        {
+          "chunk_id": 41005,
+          "repository_id": 47,
+          "file_path": "backend/app/services/__init__.py",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 3,
+          "score": 0.6945,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 36
+        },
+        {
+          "chunk_id": 41096,
+          "repository_id": 47,
+          "file_path": "frontend/src/services/api.ts",
+          "symbol_name": "mapBackendStudentToUser",
+          "start_line": 183,
+          "end_line": 183,
+          "score": 0.8646,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 40
+        },
+        {
+          "chunk_id": 40991,
+          "repository_id": 47,
+          "file_path": "backend/app/schemas/auth.py",
+          "symbol_name": "MessageResponse",
+          "start_line": 49,
+          "end_line": 50,
+          "score": 0.5696,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 31
+        },
+        {
+          "chunk_id": 41057,
+          "repository_id": 47,
+          "file_path": "frontend/src/context/AuthContext.tsx",
+          "symbol_name": "checkActiveSession",
+          "start_line": 101,
+          "end_line": 101,
+          "score": 0.8625,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 34
+        },
+        {
+          "chunk_id": 41020,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService.execute_transfer",
+          "start_line": 264,
+          "end_line": 296,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 385
+        },
+        {
+          "chunk_id": 41059,
+          "repository_id": 47,
+          "file_path": "frontend/src/context/NotificationContext.tsx",
+          "symbol_name": null,
+          "start_line": 46,
+          "end_line": 63,
+          "score": 0.7454,
+          "channels": [
+            "exact",
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 124
+        },
+        {
+          "chunk_id": 41019,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService.execute_transfer",
+          "start_line": 219,
+          "end_line": 278,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 591
+        }
+      ]
+    },
+    {
+      "id": "RP-08",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "Database Models Discovery",
+      "question": "Identify the database models representing users, point balances, and transfer transactions in backend/app/models/.",
+      "is_adversarial_absent": false,
+      "latency_ms": 615.93,
+      "retrieved_count": 8,
+      "relevant_count": 2,
+      "irrelevant_count": 6,
+      "missing_expected_files": [
+        "backend/app/models/user.py",
+        "backend/app/models/point_balance.py",
+        "backend/app/models/transaction.py"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 40968,
+          "repository_id": 47,
+          "file_path": "backend/app/models/transfer.py",
+          "symbol_name": "Transfer",
+          "start_line": 13,
+          "end_line": 72,
+          "score": 0.8946,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 507
+        },
+        {
+          "chunk_id": 40961,
+          "repository_id": 47,
+          "file_path": "backend/app/models/base.py",
+          "symbol_name": "Base",
+          "start_line": 6,
+          "end_line": 8,
+          "score": 0.8756,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 35
+        },
+        {
+          "chunk_id": 40969,
+          "repository_id": 47,
+          "file_path": "backend/app/models/transfer.py",
+          "symbol_name": "Transfer",
+          "start_line": 58,
+          "end_line": 93,
+          "score": 0.8703,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 275
+        },
+        {
+          "chunk_id": 40988,
+          "repository_id": 47,
+          "file_path": "backend/app/schemas/auth.py",
+          "symbol_name": "WalletOut",
+          "start_line": 13,
+          "end_line": 21,
+          "score": 0.8688,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 93
+        },
+        {
+          "chunk_id": 40971,
+          "repository_id": 47,
+          "file_path": "backend/app/models/wallet.py",
+          "symbol_name": "Wallet",
+          "start_line": 13,
+          "end_line": 71,
+          "score": 0.8636,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 452
+        },
+        {
+          "chunk_id": 40963,
+          "repository_id": 47,
+          "file_path": "backend/app/models/ledger.py",
+          "symbol_name": "WalletLedger",
+          "start_line": 14,
+          "end_line": 72,
+          "score": 0.8614,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 473
+        },
+        {
+          "chunk_id": 40959,
+          "repository_id": 47,
+          "file_path": "backend/app/models/audit.py",
+          "symbol_name": "AuditLog",
+          "start_line": 9,
+          "end_line": 52,
+          "score": 0.8609,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 351
+        },
+        {
+          "chunk_id": 40965,
+          "repository_id": 47,
+          "file_path": "backend/app/models/student.py",
+          "symbol_name": "Student",
+          "start_line": 11,
+          "end_line": 70,
+          "score": 0.8589,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 428
+        }
+      ]
+    },
+    {
+      "id": "RP-10",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "Frontend Auth Storage",
+      "question": "How is JWT token storage and injection handled on the frontend? Does it use localStorage, memory, or cookies?",
+      "is_adversarial_absent": false,
+      "latency_ms": 589.72,
+      "retrieved_count": 8,
+      "relevant_count": 2,
+      "irrelevant_count": 6,
+      "missing_expected_files": [
+        "frontend/src/context/AuthContext.tsx"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 41076,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/LoginPage.tsx",
+          "symbol_name": "handleDemoFill",
+          "start_line": 43,
+          "end_line": 43,
+          "score": 0.91,
+          "channels": [
+            "exact",
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 36
+        },
+        {
+          "chunk_id": 41096,
+          "repository_id": 47,
+          "file_path": "frontend/src/services/api.ts",
+          "symbol_name": "mapBackendStudentToUser",
+          "start_line": 183,
+          "end_line": 183,
+          "score": 0.71,
+          "channels": [
+            "keyword"
+          ],
+          "is_relevant": true,
+          "tokens_est": 40
+        },
+        {
+          "chunk_id": 41060,
+          "repository_id": 47,
+          "file_path": "frontend/src/hooks/useHealth.ts",
+          "symbol_name": "useHealth",
+          "start_line": 14,
+          "end_line": 14,
+          "score": 0.71,
+          "channels": [
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 37
+        },
+        {
+          "chunk_id": 41097,
+          "repository_id": 47,
+          "file_path": "frontend/src/services/api.ts",
+          "symbol_name": "ApiService",
+          "start_line": 210,
+          "end_line": 210,
+          "score": 0.68,
+          "channels": [
+            "keyword"
+          ],
+          "is_relevant": true,
+          "tokens_est": 25
+        },
+        {
+          "chunk_id": 41095,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/TransactionHistoryPage.tsx",
+          "symbol_name": "handleExportCSV",
+          "start_line": 99,
+          "end_line": 99,
+          "score": 0.68,
+          "channels": [
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 32
+        },
+        {
+          "chunk_id": 41094,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/TransactionHistoryPage.tsx",
+          "symbol_name": "fetchHistory",
+          "start_line": 39,
+          "end_line": 39,
+          "score": 0.68,
+          "channels": [
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 32
+        },
+        {
+          "chunk_id": 41093,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/StudentProfilePage.tsx",
+          "symbol_name": "handleSaveProfile",
+          "start_line": 33,
+          "end_line": 33,
+          "score": 0.68,
+          "channels": [
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 38
+        },
+        {
+          "chunk_id": 41082,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/SendPointsPage.tsx",
+          "symbol_name": "setQuickAmount",
+          "start_line": 155,
+          "end_line": 155,
+          "score": 0.68,
+          "channels": [
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 33
+        }
+      ]
+    },
+    {
+      "id": "RP-11",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "Business Logic & Balance Validation",
+      "question": "How does the backend prevent a user from transferring more points than their verified available balance?",
+      "is_adversarial_absent": false,
+      "latency_ms": 523.89,
+      "retrieved_count": 8,
+      "relevant_count": 3,
+      "irrelevant_count": 5,
+      "missing_expected_files": [
+        "backend/app/services/point_service.py",
+        "backend/app/api/transfer_api.py"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 41018,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService.execute_transfer",
+          "start_line": 174,
+          "end_line": 233,
+          "score": 1.0,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 704
+        },
+        {
+          "chunk_id": 41015,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService.execute_transfer",
+          "start_line": 39,
+          "end_line": 98,
+          "score": 1.0,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 624
+        },
+        {
+          "chunk_id": 41003,
+          "repository_id": 47,
+          "file_path": "backend/app/schemas/transfer.py",
+          "symbol_name": "WalletDetailResponse",
+          "start_line": 99,
+          "end_line": 108,
+          "score": 0.8676,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 97
+        },
+        {
+          "chunk_id": 40988,
+          "repository_id": 47,
+          "file_path": "backend/app/schemas/auth.py",
+          "symbol_name": "WalletOut",
+          "start_line": 13,
+          "end_line": 21,
+          "score": 0.8664,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 93
+        },
+        {
+          "chunk_id": 40968,
+          "repository_id": 47,
+          "file_path": "backend/app/models/transfer.py",
+          "symbol_name": "Transfer",
+          "start_line": 13,
+          "end_line": 72,
+          "score": 0.8563,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 507
+        },
+        {
+          "chunk_id": 40922,
+          "repository_id": 47,
+          "file_path": "backend/app/core/config.py",
+          "symbol_name": "Settings",
+          "start_line": 8,
+          "end_line": 67,
+          "score": 0.6475,
+          "channels": [
+            "graph"
+          ],
+          "is_relevant": false,
+          "tokens_est": 763
+        },
+        {
+          "chunk_id": 40923,
+          "repository_id": 47,
+          "file_path": "backend/app/core/config.py",
+          "symbol_name": "Settings",
+          "start_line": 53,
+          "end_line": 89,
+          "score": 0.6475,
+          "channels": [
+            "graph"
+          ],
+          "is_relevant": false,
+          "tokens_est": 400
+        },
+        {
+          "chunk_id": 40888,
+          "repository_id": 47,
+          "file_path": "backend/tests/test_transfers.py",
+          "symbol_name": "test_insufficient_balance_rejected",
+          "start_line": 120,
+          "end_line": 141,
+          "score": 0.2624,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 264
+        }
+      ]
+    },
+    {
+      "id": "RP-12",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "Configuration & Environment",
+      "question": "How does the frontend read VITE_API_URL and what fallback default is defined in .env.example?",
+      "is_adversarial_absent": false,
+      "latency_ms": 550.66,
+      "retrieved_count": 8,
+      "relevant_count": 2,
+      "irrelevant_count": 6,
+      "missing_expected_files": [
+        ".env.example",
+        "frontend/.env.example"
+      ],
+      "all_expected_found": false,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 41027,
+          "repository_id": 47,
+          "file_path": "frontend/vite.config.ts",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 17,
+          "score": 1.0,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 100
+        },
+        {
+          "chunk_id": 41093,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/StudentProfilePage.tsx",
+          "symbol_name": "handleSaveProfile",
+          "start_line": 33,
+          "end_line": 33,
+          "score": 0.974,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 38
+        },
+        {
+          "chunk_id": 41097,
+          "repository_id": 47,
+          "file_path": "frontend/src/services/api.ts",
+          "symbol_name": "ApiService",
+          "start_line": 210,
+          "end_line": 210,
+          "score": 0.9724,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": true,
+          "tokens_est": 25
+        },
+        {
+          "chunk_id": 41071,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/DashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 91,
+          "end_line": 150,
+          "score": 0.9507,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 681
+        },
+        {
+          "chunk_id": 41069,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/DashboardPage.tsx",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 60,
+          "score": 0.9142,
+          "channels": [
+            "keyword",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 680
+        },
+        {
+          "chunk_id": 41045,
+          "repository_id": 47,
+          "file_path": "frontend/src/components/EmptyState.tsx",
+          "symbol_name": null,
+          "start_line": 1,
+          "end_line": 29,
+          "score": 0.8316,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 226
+        },
+        {
+          "chunk_id": 41096,
+          "repository_id": 47,
+          "file_path": "frontend/src/services/api.ts",
+          "symbol_name": "mapBackendStudentToUser",
+          "start_line": 183,
+          "end_line": 183,
+          "score": 0.6875,
+          "channels": [
+            "keyword"
+          ],
+          "is_relevant": true,
+          "tokens_est": 40
+        },
+        {
+          "chunk_id": 41095,
+          "repository_id": 47,
+          "file_path": "frontend/src/pages/TransactionHistoryPage.tsx",
+          "symbol_name": "handleExportCSV",
+          "start_line": 99,
+          "end_line": 99,
+          "score": 0.6875,
+          "channels": [
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 32
+        }
+      ]
+    },
+    {
+      "id": "RP-19",
+      "repo_id": 47,
+      "repo_name": "RewardPoints Transfer",
+      "requirement_type": "Nonexistent / Adversarial Entity",
+      "question": "Trace how QuantumLedgerProofValidator verifies transfer validity in RewardPoints Transfer.",
+      "is_adversarial_absent": true,
+      "latency_ms": 492.91,
+      "retrieved_count": 8,
+      "relevant_count": 0,
+      "irrelevant_count": 8,
+      "missing_expected_files": [],
+      "all_expected_found": true,
+      "duplicate_spans": 0,
+      "retrieved_chunks": [
+        {
+          "chunk_id": 40999,
+          "repository_id": 47,
+          "file_path": "backend/app/schemas/transfer.py",
+          "symbol_name": "TransferCreateRequest.validate_amount_precision",
+          "start_line": 46,
+          "end_line": 53,
+          "score": 0.8297,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 132
+        },
+        {
+          "chunk_id": 40968,
+          "repository_id": 47,
+          "file_path": "backend/app/models/transfer.py",
+          "symbol_name": "Transfer",
+          "start_line": 13,
+          "end_line": 72,
+          "score": 0.8163,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 507
+        },
+        {
+          "chunk_id": 40997,
+          "repository_id": 47,
+          "file_path": "backend/app/schemas/transfer.py",
+          "symbol_name": "TransferCreateRequest",
+          "start_line": 7,
+          "end_line": 53,
+          "score": 0.8138,
+          "channels": [
+            "exact",
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 414
+        },
+        {
+          "chunk_id": 41008,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService",
+          "start_line": 19,
+          "end_line": 78,
+          "score": 0.6167,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 608
+        },
+        {
+          "chunk_id": 41015,
+          "repository_id": 47,
+          "file_path": "backend/app/services/transfer_service.py",
+          "symbol_name": "TransferService.execute_transfer",
+          "start_line": 39,
+          "end_line": 98,
+          "score": 0.6132,
+          "channels": [
+            "vector"
+          ],
+          "is_relevant": false,
+          "tokens_est": 624
+        },
+        {
+          "chunk_id": 40936,
+          "repository_id": 47,
+          "file_path": "backend/app/core/error_handlers.py",
+          "symbol_name": "unhandled_exception_handler",
+          "start_line": 99,
+          "end_line": 117,
+          "score": 0.575,
+          "channels": [
+            "exact",
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 220
+        },
+        {
+          "chunk_id": 40932,
+          "repository_id": 47,
+          "file_path": "backend/app/core/error_handlers.py",
+          "symbol_name": "register_error_handlers",
+          "start_line": 59,
+          "end_line": 117,
+          "score": 0.575,
+          "channels": [
+            "exact",
+            "keyword"
+          ],
+          "is_relevant": false,
+          "tokens_est": 611
+        },
+        {
+          "chunk_id": 40970,
+          "repository_id": 47,
+          "file_path": "backend/app/models/transfer.py",
+          "symbol_name": "Transfer.__repr__",
+          "start_line": 92,
+          "end_line": 93,
+          "score": 0.5,
+          "channels": [
+            "exact"
+          ],
+          "is_relevant": false,
+          "tokens_est": 56
+        }
+      ]
+    }
+  ]
+}

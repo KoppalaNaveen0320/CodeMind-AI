@@ -551,6 +551,25 @@ class CodeExtractor:
             def __init__(self):
                 self.symbols: List[ExtractedSymbol] = []
                 self.class_stack: List[str] = []
+                self.in_type_checking: int = 0
+                self.func_depth: int = 0
+
+            def visit_If(self, node):
+                test_str = ""
+                try:
+                    test_str = ast.unparse(node.test)
+                except Exception:
+                    pass
+                is_tc = ("TYPE_CHECKING" in test_str or test_str == "False" or "typing.TYPE_CHECKING" in test_str)
+                if is_tc:
+                    self.in_type_checking += 1
+                    for item in node.body:
+                        self.visit(item)
+                    self.in_type_checking -= 1
+                    for item in node.orelse:
+                        self.visit(item)
+                else:
+                    self.generic_visit(node)
 
             def visit_ClassDef(self, node):
                 doc = ast.get_docstring(node)
@@ -569,10 +588,14 @@ class CodeExtractor:
                 self.class_stack.pop()
 
             def visit_FunctionDef(self, node):
+                self.func_depth += 1
                 self._record_func(node)
+                self.func_depth -= 1
 
             def visit_AsyncFunctionDef(self, node):
+                self.func_depth += 1
                 self._record_func(node)
+                self.func_depth -= 1
 
             def _record_func(self, node):
                 parent_class = self.class_stack[-1] if self.class_stack else None
@@ -592,10 +615,47 @@ class CodeExtractor:
                     end_column=getattr(node, "end_col_offset", 0),
                     docstring=doc
                 ))
+
+                # Check for string forward-reference annotations in arguments and returns
+                all_annotations = [a.annotation for a in getattr(node.args, "args", []) if getattr(a, "annotation", None)]
+                if getattr(node.args, "vararg", None) and getattr(node.args.vararg, "annotation", None):
+                    all_annotations.append(node.args.vararg.annotation)
+                if getattr(node.args, "kwarg", None) and getattr(node.args.kwarg, "annotation", None):
+                    all_annotations.append(node.args.kwarg.annotation)
+                for a in getattr(node.args, "kwonlyargs", []):
+                    if getattr(a, "annotation", None):
+                        all_annotations.append(a.annotation)
+                if getattr(node, "returns", None):
+                    all_annotations.append(node.returns)
+
+                for ann in all_annotations:
+                    self._extract_forward_refs(ann)
+
                 self.generic_visit(node)
+
+            def _extract_forward_refs(self, ann_node):
+                if ann_node is None:
+                    return
+                if isinstance(ann_node, ast.Constant) and isinstance(ann_node.value, str):
+                    val = ann_node.value.strip()
+                    if val and (val.isidentifier() or all(part.isidentifier() for part in val.split("."))):
+                        self.symbols.append(ExtractedSymbol(
+                            name=val,
+                            kind="forward_ref",
+                            signature=f"forward_ref: {val}",
+                            start_line=ann_node.lineno,
+                            end_line=getattr(ann_node, "end_lineno", ann_node.lineno),
+                            start_column=ann_node.col_offset,
+                            end_column=getattr(ann_node, "end_col_offset", 0),
+                            docstring="FORWARD_REF"
+                        ))
+                elif isinstance(ann_node, (ast.Subscript, ast.Tuple, ast.List, ast.BinOp)):
+                    for child in ast.iter_child_nodes(ann_node):
+                        self._extract_forward_refs(child)
 
             def visit_Import(self, node):
                 names = [alias.name for alias in node.names]
+                category = "TYPE_CHECKING" if self.in_type_checking > 0 else ("LOCAL" if self.func_depth > 0 else "RUNTIME")
                 self.symbols.append(ExtractedSymbol(
                     name=", ".join(names),
                     kind="import",
@@ -604,11 +664,13 @@ class CodeExtractor:
                     end_line=getattr(node, "end_lineno", node.lineno),
                     start_column=node.col_offset,
                     end_column=getattr(node, "end_col_offset", 0),
+                    docstring=category
                 ))
 
             def visit_ImportFrom(self, node):
                 mod = node.module or ""
                 names = [alias.name for alias in node.names]
+                category = "TYPE_CHECKING" if self.in_type_checking > 0 else ("LOCAL" if self.func_depth > 0 else "RUNTIME")
                 self.symbols.append(ExtractedSymbol(
                     name=f"from {mod} import {', '.join(names)}",
                     kind="import",
@@ -617,6 +679,7 @@ class CodeExtractor:
                     end_line=getattr(node, "end_lineno", node.lineno),
                     start_column=node.col_offset,
                     end_column=getattr(node, "end_col_offset", 0),
+                    docstring=category
                 ))
 
         visitor = PySymbolVisitor()

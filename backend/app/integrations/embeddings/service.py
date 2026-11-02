@@ -132,12 +132,17 @@ class EmbeddingService:
 
         # Extract stable descriptor representations using persisted primary keys
         chunk_descriptors = []
+        expected_dim = active_provider.dimension or getattr(settings, "EMBEDDING_DIMENSION", 768)
+
         for c in chunks:
             cid = getattr(c, "id", None)
             c_repo_id = repository_id if repository_id is not None else getattr(c, "repository_id", None)
             c_text = getattr(c, "chunk_text", "")
             c_hash = getattr(c, "content_hash", "")
-            c_emb = getattr(c, "embedding", None)
+            try:
+                c_emb = getattr(c, "embedding", None)
+            except Exception:
+                c_emb = None
             c_model = getattr(c, "embedding_model", None)
             chunk_descriptors.append({
                 "id": cid,
@@ -166,28 +171,29 @@ class EmbeddingService:
             # Check in-memory batch hash cache first to prevent redundant database or API lookups
             if item["content_hash"] in hash_vector_cache:
                 reused_vec = hash_vector_cache[item["content_hash"]]
-                stmt = (
-                    update(CodeChunk)
-                    .where(
-                        CodeChunk.id == item["id"],
-                        CodeChunk.repository_id == item["repository_id"],
+                if isinstance(reused_vec, (list, tuple)) and len(reused_vec) == expected_dim:
+                    stmt = (
+                        update(CodeChunk)
+                        .where(
+                            CodeChunk.id == item["id"],
+                            CodeChunk.repository_id == item["repository_id"],
+                        )
+                        .values(
+                            embedding=reused_vec,
+                            embedding_model=active_provider.model_name,
+                        )
                     )
-                    .values(
-                        embedding=reused_vec,
-                        embedding_model=active_provider.model_name,
-                    )
-                )
-                res = db.execute(stmt)
-                if res.rowcount > 0:
-                    reused_count += res.rowcount
-                    orm_obj = item.get("orm_obj")
-                    if orm_obj is not None:
-                        try:
-                            set_committed_value(orm_obj, "embedding", reused_vec)
-                            set_committed_value(orm_obj, "embedding_model", active_provider.model_name)
-                        except Exception:
-                            pass
-                continue
+                    res = db.execute(stmt)
+                    if res.rowcount > 0:
+                        reused_count += res.rowcount
+                        orm_obj = item.get("orm_obj")
+                        if orm_obj is not None:
+                            try:
+                                set_committed_value(orm_obj, "embedding", reused_vec)
+                                set_committed_value(orm_obj, "embedding_model", active_provider.model_name)
+                            except Exception:
+                                pass
+                    continue
 
             # Check if identical content hash was previously embedded with the same model
             existing_identical = (
@@ -202,34 +208,36 @@ class EmbeddingService:
 
             if existing_identical and existing_identical[0] is not None:
                 reused_vec = list(existing_identical[0])
-                hash_vector_cache[item["content_hash"]] = reused_vec
-                stmt = (
-                    update(CodeChunk)
-                    .where(
-                        CodeChunk.id == item["id"],
-                        CodeChunk.repository_id == item["repository_id"],
+                if isinstance(reused_vec, (list, tuple)) and len(reused_vec) == expected_dim:
+                    hash_vector_cache[item["content_hash"]] = reused_vec
+                    stmt = (
+                        update(CodeChunk)
+                        .where(
+                            CodeChunk.id == item["id"],
+                            CodeChunk.repository_id == item["repository_id"],
+                        )
+                        .values(
+                            embedding=reused_vec,
+                            embedding_model=active_provider.model_name,
+                        )
                     )
-                    .values(
-                        embedding=reused_vec,
-                        embedding_model=active_provider.model_name,
-                    )
-                )
-                res = db.execute(stmt)
-                if res.rowcount > 0:
-                    reused_count += res.rowcount
-                    orm_obj = item.get("orm_obj")
-                    if orm_obj is not None:
-                        try:
-                            set_committed_value(orm_obj, "embedding", reused_vec)
-                            set_committed_value(orm_obj, "embedding_model", active_provider.model_name)
-                        except Exception:
-                            pass
-                else:
-                    logger.warning(
-                        f"Chunk {item['id']} for repository {item['repository_id']} not found during reuse update."
-                    )
-            else:
-                to_embed.append(item)
+                    res = db.execute(stmt)
+                    if res.rowcount > 0:
+                        reused_count += res.rowcount
+                        orm_obj = item.get("orm_obj")
+                        if orm_obj is not None:
+                            try:
+                                set_committed_value(orm_obj, "embedding", reused_vec)
+                                set_committed_value(orm_obj, "embedding_model", active_provider.model_name)
+                            except Exception:
+                                pass
+                    else:
+                        logger.warning(
+                            f"Chunk {item['id']} for repository {item['repository_id']} not found during reuse update."
+                        )
+                    continue
+
+            to_embed.append(item)
 
         if reused_count > 0:
             db.commit()
@@ -275,6 +283,42 @@ class EmbeddingService:
                     "skipped_count": len(to_embed) - total_embedded,
                     "error": err_msg,
                 }
+
+            # Pre-database validation: Ensure every vector is a flat list of numeric floats matching expected_dim
+            for idx, vec in enumerate(vectors):
+                if not isinstance(vec, (list, tuple)):
+                    err_msg = f"Embedding provider returned non-list vector at index {idx}: {type(vec).__name__}."
+                    logger.error(err_msg)
+                    db.rollback()
+                    return {
+                        "success": False,
+                        "embedded_count": total_embedded,
+                        "reused_count": reused_count,
+                        "skipped_count": len(to_embed) - total_embedded,
+                        "error": err_msg,
+                    }
+                if len(vec) != expected_dim:
+                    err_msg = f"Vector dimension mismatch: expected {expected_dim}, got {len(vec)}."
+                    logger.error(err_msg)
+                    db.rollback()
+                    return {
+                        "success": False,
+                        "embedded_count": total_embedded,
+                        "reused_count": reused_count,
+                        "skipped_count": len(to_embed) - total_embedded,
+                        "error": err_msg,
+                    }
+                if any(not isinstance(x, (int, float)) for x in vec):
+                    err_msg = f"Vector at index {idx} contains non-numeric elements."
+                    logger.error(err_msg)
+                    db.rollback()
+                    return {
+                        "success": False,
+                        "embedded_count": total_embedded,
+                        "reused_count": reused_count,
+                        "skipped_count": len(to_embed) - total_embedded,
+                        "error": err_msg,
+                    }
 
             try:
                 batch_updated = 0

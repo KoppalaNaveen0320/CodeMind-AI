@@ -413,3 +413,146 @@ class KnowledgeGraphService:
                     queue.append((edge.target_node_id, new_path))
 
         return None
+
+    @classmethod
+    def classify_imports_and_cycles(cls, db: Session, repository_id: int) -> Dict[str, Any]:
+        """
+        Classifies repository import relationships into 5 distinct categories:
+        1. runtime_cycles: Genuine runtime circular imports (modules that form a closed cycle at import time).
+        2. type_checking_dependencies: Type-only imports guarded by `if TYPE_CHECKING:`.
+        3. forward_ref_dependencies: Forward reference string annotations (e.g. "APIRoute").
+        4. local_imports: Deferred imports executed inside function or method bodies.
+        5. normal_dependencies: Standard acyclic top-level runtime module dependencies.
+        """
+        from backend.app.models.code_symbol import CodeSymbol
+
+        nodes = db.query(GraphNode).filter(GraphNode.repository_id == repository_id).all()
+        node_map = {n.id: n for n in nodes}
+        file_nodes = {n.id: (n.file_path or n.name).replace("\\", "/") for n in nodes if n.node_type == "file"}
+
+        edges = (
+            db.query(GraphEdge)
+            .filter(
+                GraphEdge.repository_id == repository_id,
+                GraphEdge.edge_type.in_(["IMPORTS", "TYPE_CHECKING_IMPORTS", "LOCAL_IMPORTS"]),
+            )
+            .all()
+        )
+
+        runtime_adj: Dict[str, Set[str]] = {}
+        runtime_edges_list: List[Dict[str, Any]] = []
+        type_checking_dependencies: List[Dict[str, Any]] = []
+        local_imports: List[Dict[str, Any]] = []
+
+        for e in edges:
+            src_path = file_nodes.get(e.source_node_id)
+            tgt_path = file_nodes.get(e.target_node_id)
+            if not src_path or not tgt_path:
+                continue
+
+            edge_info = {
+                "source": src_path,
+                "target": tgt_path,
+                "evidence": e.evidence or "",
+                "edge_type": e.edge_type,
+            }
+
+            if e.edge_type == "TYPE_CHECKING_IMPORTS" or "[TYPE_CHECKING]" in (e.evidence or ""):
+                type_checking_dependencies.append(edge_info)
+            elif e.edge_type == "LOCAL_IMPORTS" or "[LOCAL]" in (e.evidence or ""):
+                local_imports.append(edge_info)
+            elif e.edge_type == "IMPORTS":
+                # Check evidence to ensure it's not a TYPE_CHECKING import recorded as generic IMPORTS
+                ev = (e.evidence or "").lower()
+                if "type_checking" in ev:
+                    type_checking_dependencies.append(edge_info)
+                elif "deferred" in ev or "inside function" in ev:
+                    local_imports.append(edge_info)
+                else:
+                    if src_path != tgt_path:
+                        runtime_adj.setdefault(src_path, set()).add(tgt_path)
+                    runtime_edges_list.append(edge_info)
+
+        # Also inspect CodeSymbols for forward references and import symbols
+        forward_ref_symbols = (
+            db.query(CodeSymbol)
+            .filter(
+                CodeSymbol.repository_id == repository_id,
+                CodeSymbol.kind.in_(["forward_ref", "import"]),
+            )
+            .all()
+        )
+
+        forward_ref_dependencies: List[Dict[str, Any]] = []
+        for s in forward_ref_symbols:
+            if s.kind == "forward_ref" or (s.signature and s.signature.startswith("forward_ref:")):
+                f_path = s.file.path if s.file else "unknown"
+                forward_ref_dependencies.append({
+                    "file_path": f_path.replace("\\", "/"),
+                    "name": s.name,
+                    "line": s.start_line,
+                    "signature": s.signature,
+                })
+            elif s.kind == "import" and s.docstring == "TYPE_CHECKING":
+                f_path = s.file.path if s.file else "unknown"
+                item = {
+                    "source": f_path.replace("\\", "/"),
+                    "target": s.name,
+                    "evidence": f"[TYPE_CHECKING] {s.signature or s.name}",
+                    "edge_type": "TYPE_CHECKING_IMPORTS",
+                }
+                if not any(tc["source"] == item["source"] and s.name in tc.get("evidence", "") for tc in type_checking_dependencies):
+                    type_checking_dependencies.append(item)
+            elif s.kind == "import" and s.docstring == "LOCAL":
+                f_path = s.file.path if s.file else "unknown"
+                item = {
+                    "source": f_path.replace("\\", "/"),
+                    "target": s.name,
+                    "evidence": f"[LOCAL] {s.signature or s.name}",
+                    "edge_type": "LOCAL_IMPORTS",
+                }
+                if not any(loc["source"] == item["source"] and s.name in loc.get("evidence", "") for loc in local_imports):
+                    local_imports.append(item)
+
+        # Detect runtime import cycles via DFS
+        runtime_cycles: List[List[str]] = []
+        visited_state: Dict[str, int] = {}  # 0: visiting, 1: visited
+
+        def dfs_detect_cycles(node: str, current_path: List[str]):
+            visited_state[node] = 0
+            for neighbor in sorted(list(runtime_adj.get(node, []))):
+                if neighbor in current_path:
+                    cycle_start = current_path.index(neighbor)
+                    cycle = current_path[cycle_start:] + [neighbor]
+                    # Deduplicate cyclic permutations
+                    min_idx = cycle.index(min(cycle[:-1]))
+                    canonical = cycle[min_idx:-1] + cycle[:min_idx] + [cycle[min_idx]]
+                    if canonical not in runtime_cycles:
+                        runtime_cycles.append(canonical)
+                elif visited_state.get(neighbor) != 1:
+                    dfs_detect_cycles(neighbor, current_path + [neighbor])
+            visited_state[node] = 1
+
+        for mod in sorted(list(runtime_adj.keys())):
+            if mod not in visited_state:
+                dfs_detect_cycles(mod, [mod])
+
+        cycle_nodes: Set[str] = {item for cyc in runtime_cycles for item in cyc}
+        normal_dependencies = [
+            e for e in runtime_edges_list
+            if not (e["source"] in cycle_nodes and e["target"] in cycle_nodes)
+        ]
+
+        return {
+            "has_runtime_cycles": len(runtime_cycles) > 0,
+            "runtime_cycle_count": len(runtime_cycles),
+            "runtime_cycles": runtime_cycles,
+            "type_checking_dependencies": type_checking_dependencies,
+            "type_checking_count": len(type_checking_dependencies),
+            "forward_ref_dependencies": forward_ref_dependencies,
+            "forward_ref_count": len(forward_ref_dependencies),
+            "local_imports": local_imports,
+            "local_import_count": len(local_imports),
+            "normal_dependencies": normal_dependencies,
+            "normal_dependency_count": len(normal_dependencies),
+        }

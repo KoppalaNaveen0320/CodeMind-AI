@@ -141,11 +141,19 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
             
             # Validate output dimensions for every vector in the batch
             for idx, vec in enumerate(embeddings_chunk):
+                if not isinstance(vec, (list, tuple)):
+                    raise EmbeddingError(
+                        f"Malformed embedding from Ollama model '{self._model}': expected numeric vector, got {type(vec).__name__}"
+                    )
                 if len(vec) != self._dimension:
                     raise EmbeddingError(
                         f"Dimension mismatch from Ollama embedding model '{self._model}': "
                         f"expected {self._dimension}, got {len(vec)}. "
                         "Vector cannot be safely stored in the database."
+                    )
+                if any(not isinstance(x, (int, float)) for x in vec):
+                    raise EmbeddingError(
+                        f"Malformed embedding from Ollama model '{self._model}': vector contains non-numeric values."
                     )
 
             all_embeddings.extend(embeddings_chunk)
@@ -165,8 +173,17 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
                 if response.status_code == 200:
                     data = response.json()
                     embeddings = data.get("embeddings", [])
+                    if not embeddings and "embedding" in data:
+                        single = data["embedding"]
+                        if isinstance(single, list):
+                            if single and isinstance(single[0], (int, float)):
+                                embeddings = [single]
+                            elif single and isinstance(single[0], list):
+                                embeddings = single
                     if not embeddings:
                         raise EmbeddingError(f"Ollama returned empty embeddings array: {response.text}")
+                    if isinstance(embeddings, list) and embeddings and isinstance(embeddings[0], (int, float)):
+                        embeddings = [embeddings]
                     return embeddings
 
                 elif response.status_code == 404:

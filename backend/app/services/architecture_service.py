@@ -18,6 +18,57 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class FileRoleClassifier:
+    """
+    Classifies repository files into architectural roles:
+    - core_framework: Reusable framework library internals (e.g. fastapi/, pydantic/, flask/)
+    - core_app: User application logic (e.g. app/, src/, backend/)
+    - test: Unit/integration test suites (e.g. tests/, spec/)
+    - example_tutorial: Documentation tutorials and example apps (e.g. docs_src/, examples/)
+    - documentation: Markdown and RST documentation files (e.g. docs/, doc/)
+    - configuration: Project manifests, configs, and build files
+    - script: Tooling and CI automation (e.g. scripts/, .github/)
+    """
+    @classmethod
+    def classify(cls, file_path: str, repo_name: str = "", project_type: str = "") -> str:
+        p = file_path.replace("\\", "/").lower()
+        parts = p.split("/")
+        top = parts[0] if len(parts) > 1 else ""
+        filename = parts[-1]
+
+        # 1. Tests
+        if top in {"tests", "test", "spec", "__tests__", "testing"} or filename.startswith("test_") or filename.endswith("_test.py"):
+            return "test"
+
+        # 2. Examples / Tutorials
+        if top in {"docs_src", "examples", "samples", "demos", "tutorials"}:
+            return "example_tutorial"
+
+        # 3. Documentation
+        if top in {"docs", "doc"} or filename.endswith((".md", ".rst", ".adoc")):
+            return "documentation"
+
+        # 4. Manifests & Configs
+        if filename in {
+            "pyproject.toml", "setup.py", "setup.cfg", "package.json", "tsconfig.json",
+            "cargo.toml", "go.mod", "pom.xml", "build.gradle", "requirements.txt",
+            "dockerfile", "docker-compose.yml", "license", "citation.cff"
+        }:
+            return "configuration"
+
+        # 5. Scripts & Tooling
+        if top in {"scripts", "tools", "ci", ".github", "bin"}:
+            return "script"
+
+        # 6. Core Framework vs Core App
+        clean_repo = repo_name.lower().replace("-", "_").replace(" ", "_")
+        if top == clean_repo or top == "fastapi" or project_type in ("framework", "library"):
+            if top not in {"docs", "docs_src", "tests", "scripts"}:
+                return "core_framework"
+
+        return "core_app"
+
+@dataclass
 class DiscoveredComponent:
     component_type: str  # entry_point, frontend_ui, api_route, service, persistence, auth, integration, background_job, config, test
     name: str
@@ -161,6 +212,7 @@ class ArchitectureAnalysisEngine:
             .filter(
                 CodeChunk.repository_id == repo.id,
                 not_(CodeChunk.file_path.ilike("%docs/%")),
+                not_(CodeChunk.file_path.ilike("%docs_src/%")),
                 not_(CodeChunk.file_path.ilike("%uploads/%")),
             )
             .all()
@@ -176,7 +228,7 @@ class ArchitectureAnalysisEngine:
         frameworks = cls._detect_frameworks(file_paths, chunks, repo.tech_stack)
 
         # 2. Project Layout & Type Detection
-        project_type = cls._detect_project_type(file_paths, languages, frameworks)
+        project_type = cls._detect_project_type(file_paths, languages, frameworks, repo.name or '')
 
         # 3. Discover Components
         components: List[DiscoveredComponent] = []
@@ -191,33 +243,36 @@ class ArchitectureAnalysisEngine:
                 components.append(comp)
 
         # A. Entry Points & Bootstrap
-        cls._discover_entry_points(chunks, file_paths, add_comp)
+        cls._discover_entry_points(chunks, file_paths, add_comp, project_type, repo.name or '')
 
         # B. Routes, APIs & Controllers
-        cls._discover_api_routes(chunks, symbols, file_paths, add_comp)
+        cls._discover_api_routes(chunks, symbols, file_paths, add_comp, project_type, repo.name or '')
 
         # C. Services & Business Logic
-        cls._discover_services(chunks, symbols, file_paths, add_comp)
+        cls._discover_services(chunks, symbols, file_paths, add_comp, project_type, repo.name or '')
 
         # D. Database Models & Persistence
-        cls._discover_persistence(chunks, symbols, file_paths, add_comp)
+        cls._discover_persistence(chunks, symbols, file_paths, add_comp, project_type, repo.name or '')
 
         # E. Authentication & Authorization
-        cls._discover_auth(chunks, file_paths, add_comp)
+        cls._discover_auth(chunks, file_paths, add_comp, project_type, repo.name or '')
 
         # F. External Integrations
         cls._discover_integrations(chunks, file_paths, add_comp)
 
         # G. Background Jobs & Workers
-        cls._discover_background_jobs(chunks, file_paths, add_comp)
+        cls._discover_background_jobs(chunks, file_paths, add_comp, project_type, repo.name or '')
 
         # H. Configuration & Deployment Infrastructure
-        cls._discover_configuration(chunks, file_paths, add_comp)
+        cls._discover_configuration(chunks, file_paths, add_comp, project_type, repo.name or '')
 
         # I. Frontend UI Components
         cls._discover_frontend_components(chunks, file_paths, add_comp)
 
-        # J. Tests
+        # J. Mobile Native Components (Android / Host Bridges)
+        cls._discover_mobile_native_components(chunks, file_paths, add_comp)
+
+        # K. Tests
         cls._discover_tests(file_paths, add_comp)
 
         # Group components by type
@@ -385,17 +440,27 @@ class ArchitectureAnalysisEngine:
         return sorted(list(frameworks))
 
     @classmethod
-    def _detect_project_type(cls, file_paths: List[str], languages: List[str], frameworks: List[str]) -> str:
+    def _detect_project_type(cls, file_paths: List[str], languages: List[str], frameworks: List[str], repo_name: str = "") -> str:
+        clean_repo_name = (repo_name or "").lower().replace("-", "_").replace(" ", "_")
+        if clean_repo_name:
+            p_check = [fp.lower().replace("\\", "/") for fp in file_paths]
+            has_matching_pkg = any(p.startswith(f"{clean_repo_name}/") or p.startswith(f"src/{clean_repo_name}/") for p in p_check)
+            if has_matching_pkg:
+                has_init = any(p == f"{clean_repo_name}/__init__.py" or p == f"src/{clean_repo_name}/__init__.py" for p in p_check)
+                if has_init:
+                    return "framework" if any(f in clean_repo_name for f in ["fastapi", "flask", "django", "express", "gin"]) else "library"
         p_lower = [fp.lower().replace("\\", "/") for fp in file_paths]
-        has_apps = any(p.startswith("apps/") or "/apps/" in p for p in p_lower)
-        has_packages = any(p.startswith("packages/") or "/packages/" in p for p in p_lower)
-        services_count = sum(1 for p in p_lower if p.startswith("services/") or "/services/" in p)
-
-        if (has_apps and has_packages) or services_count > 1:
-            return "monorepo"
 
         if "Flutter" in frameworks or "React Native" in frameworks or any(p.startswith("lib/main.dart") or "android/" in p or "ios/" in p for p in p_lower):
             return "mobile"
+
+        has_apps = any(p.startswith("apps/") or "/apps/" in p for p in p_lower)
+        has_packages = any(p.startswith("packages/") or "/packages/" in p for p in p_lower)
+        # Only count genuine standalone microservice top-level directories, not standard internal app service directories
+        services_count = sum(1 for p in p_lower if (p.startswith("services/") or "/services/" in p) and not any(p.startswith(prefix) for prefix in ["lib/", "backend/", "app/", "src/"]))
+
+        if (has_apps and has_packages) or services_count > 1:
+            return "monorepo"
 
         fe_langs = {"HTML", "CSS", "TypeScript", "JavaScript"}
         be_langs = {"Python", "Go", "Rust", "Java", "Kotlin", "C#", "PHP", "Ruby"}
@@ -413,8 +478,27 @@ class ArchitectureAnalysisEngine:
         return "monolith"
 
     @classmethod
-    def _discover_entry_points(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp):
+    def _discover_entry_points(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp, project_type: str = "monolith", repo_name: str = ""):
         """Discovers application bootstrap and entry points across technologies."""
+        if project_type in ("framework", "library"):
+            clean_repo = repo_name.lower().replace("-", "_").replace(" ", "_")
+            for p in file_paths:
+                p_norm = p.lower().replace("\\\\", "/")
+                if p_norm.endswith("__init__.py") and not any(ex in p_norm for ex in ["tests/", "test/", "docs/", "docs_src/", "examples/"]):
+                    if clean_repo and (p_norm == f"{clean_repo}/__init__.py" or p_norm == f"src/{clean_repo}/__init__.py"):
+                        init_chunks = [c for c in chunks if c.file_path.replace("\\\\", "/").lower() == p_norm]
+                        snippet = init_chunks[0].chunk_text[:350] if init_chunks else ""
+                        add_comp(DiscoveredComponent(
+                            component_type="entry_point",
+                            name=f"Framework Package Root (`{p}`)",
+                            file_path=p,
+                            start_line=1,
+                            end_line=len(snippet.splitlines()) or 50,
+                            confidence=0.99,
+                            description=f"Core framework package entry point exporting public APIs and top-level classes (`{p}`).",
+                            snippet=snippet,
+                            metadata={"sub_type": "framework_package_root", "role": "core_framework"}
+                        ))
         entry_patterns = [
             # Python
             (r'\b(?:app|application)\s*=\s*(?:FastAPI|Flask|Sanic|Tornado)\b', "Web Application Instance"),
@@ -505,8 +589,22 @@ class ArchitectureAnalysisEngine:
                     ))
 
     @classmethod
-    def _discover_api_routes(cls, chunks: List[CodeChunk], symbols: List[CodeSymbol], file_paths: List[str], add_comp):
+    def _discover_api_routes(cls, chunks: List[CodeChunk], symbols: List[CodeSymbol], file_paths: List[str], add_comp, project_type: str = "monolith", repo_name: str = ""):
         """Discovers routes, API endpoints, and controllers across technologies."""
+        if project_type in ("framework", "library"):
+            routing_file = next((p for p in file_paths if "routing.py" in p or "router.py" in p), None)
+            if routing_file:
+                add_comp(DiscoveredComponent(
+                    component_type="api_route",
+                    name="Framework Routing Engine (`APIRouter` / `APIRoute`)",
+                    file_path=routing_file,
+                    start_line=1,
+                    end_line=50,
+                    confidence=0.99,
+                    description=f"Framework routing engine (`{routing_file}`), defining `APIRouter`, `APIRoute`, and route decorator dispatch (`get`, `post`, etc.).",
+                    snippet="",
+                    metadata={"sub_type": "framework_routing_engine"}
+                ))
         route_decorator_patterns = [
             # Python FastAPI / Flask / Django
             r'@(?:router|app|api_router|bp|blueprint)\.(?:get|post|put|delete|patch|options|head|route|api_route)\s*\(\s*["\']([^"\']+)["\']',
@@ -564,7 +662,7 @@ class ArchitectureAnalysisEngine:
                     ))
 
     @classmethod
-    def _discover_services(cls, chunks: List[CodeChunk], symbols: List[CodeSymbol], file_paths: List[str], add_comp):
+    def _discover_services(cls, chunks: List[CodeChunk], symbols: List[CodeSymbol], file_paths: List[str], add_comp, project_type: str = "monolith", repo_name: str = ""):
         """Discovers domain services, business logic, state controllers, and managers."""
         service_dirs = ["services/", "service/", "business/", "domain/", "usecases/", "logic/", "managers/", "controllers/", "controller/", "bloc/", "cubit/", "store/"]
 
@@ -605,8 +703,21 @@ class ArchitectureAnalysisEngine:
                 ))
 
     @classmethod
-    def _discover_persistence(cls, chunks: List[CodeChunk], symbols: List[CodeSymbol], file_paths: List[str], add_comp):
+    def _discover_persistence(cls, chunks: List[CodeChunk], symbols: List[CodeSymbol], file_paths: List[str], add_comp, project_type: str = "monolith", repo_name: str = ""):
         """Discovers database models, schemas, repositories, and persistence logic."""
+        if project_type in ("framework", "library"):
+            core_file = next((p for p in file_paths if p.replace("\\\\", "/").startswith(f"{repo_name.lower()}/") and p.endswith(".py")), "pyproject.toml")
+            add_comp(DiscoveredComponent(
+                component_type="persistence",
+                name="Framework Architecture (Database-Agnostic)",
+                file_path=core_file,
+                start_line=1,
+                end_line=50,
+                confidence=0.99,
+                description=f"{repo_name} is a framework library that does not bundle an internal database engine or database models. Applications integrate databases externally using dependency injection (`Depends(get_db)`). Tutorial models in `docs_src/` are client demonstration examples only.",
+                snippet="",
+                metadata={"sub_type": "framework_database_agnostic"}
+            ))
         model_patterns = [
             # SQLAlchemy / Python
             (r'\bclass\s+([A-Za-z0-9_]+)\s*\(\s*(?:Base|Model|db\.Model)\s*\)', "SQLAlchemy"),
@@ -659,9 +770,10 @@ class ArchitectureAnalysisEngine:
                         metadata={"sub_type": sub, "model_name": m_name, "flavor": flavor},
                     ))
 
-            # Repository / DAO classes
+            # Repository / DAO classes (strictly distinguishing DAO pattern classes from ORM database model tables)
+            is_model_dir = any(pd in p_lower for pd in ["models/", "entities/", "schemas/"])
             repo_match = re.search(r'\bclass\s+([A-Za-z0-9_]*(?:Repository|DAO|Repo))\b', txt)
-            if repo_match:
+            if repo_match and not is_model_dir and not any(k in txt for k in ["(Base)", "db.Model", "__tablename__"]):
                 r_name = repo_match.group(1)
                 add_comp(DiscoveredComponent(
                     component_type="persistence",
@@ -720,8 +832,22 @@ class ArchitectureAnalysisEngine:
                     ))
 
     @classmethod
-    def _discover_auth(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp):
+    def _discover_auth(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp, project_type: str = "monolith", repo_name: str = ""):
         """Discovers authentication, authorization, and security mechanisms."""
+        if project_type in ("framework", "library"):
+            sec_files = [p for p in file_paths if "security" in p.replace("\\\\", "/").lower() and not any(ex in p.lower() for ex in ["tests/", "docs/"])]
+            for sf in sec_files:
+                add_comp(DiscoveredComponent(
+                    component_type="auth",
+                    name=f"Security Scheme Utility: {Path(sf).stem}",
+                    file_path=sf,
+                    start_line=1,
+                    end_line=50,
+                    confidence=0.95,
+                    description=f"Framework security utility and dependency schemes in `{sf}`. Note: {repo_name} is a framework providing security utilities; it does not contain built-in application user accounts, password databases, or user credential storage.",
+                    snippet="",
+                    metadata={"sub_type": "security_utility"}
+                ))
         auth_patterns = [
             (r'\b(?:jwt\.encode|create_access_token|issue_token|generate_jwt)\b', "Token Creation (JWT/Session)"),
             (r'\b(?:jwt\.decode|verify_token|decode_jwt|validate_token)\b', "Token Validation (JWT/Session)"),
@@ -734,12 +860,14 @@ class ArchitectureAnalysisEngine:
         for c in chunks:
             p = c.file_path.replace("\\", "/")
             p_lower = p.lower()
-            if any(ex in p_lower for ex in ["tests/", "test/", "uploads/", "fixtures/"]):
+            if any(ex in p_lower for ex in ["tests/", "test/", "uploads/", "fixtures/", "generate_docx", "generate_pdf", "reports/"]):
                 continue
 
             txt = c.chunk_text
             for pat, desc in auth_patterns:
                 if re.search(pat, txt):
+                    if desc == "OAuth / External Identity Provider" and not any(k in txt for k in ["OAuth2PasswordBearer", "oauth_callback", "initiate_github_login", "OAuth", "GitHubOAuth"]):
+                        continue
                     add_comp(DiscoveredComponent(
                         component_type="auth",
                         name=desc,
@@ -767,7 +895,7 @@ class ArchitectureAnalysisEngine:
         for c in chunks:
             p = c.file_path.replace("\\", "/")
             p_lower = p.lower()
-            if any(ex in p_lower for ex in ["tests/", "test/", "uploads/", "fixtures/"]):
+            if any(ex in p_lower for ex in ["tests/", "test/", "uploads/", "fixtures/", "generate_docx", "generate_pdf"]):
                 continue
 
             txt = c.chunk_text
@@ -785,41 +913,119 @@ class ArchitectureAnalysisEngine:
                     ))
 
     @classmethod
-    def _discover_background_jobs(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp):
+    def _discover_background_jobs(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp, project_type: str = "monolith", repo_name: str = ""):
+        if project_type in ("framework", "library"):
+            bg_file = next((p for p in file_paths if "background.py" in p), None)
+            if bg_file:
+                add_comp(DiscoveredComponent(
+                    component_type="background_job",
+                    name="Framework BackgroundTasks Engine",
+                    file_path=bg_file,
+                    start_line=1,
+                    end_line=50,
+                    confidence=0.99,
+                    description=f"Framework background task abstraction (`{bg_file}`), defining `BackgroundTasks` inheriting from Starlette to run asynchronous tasks after returning HTTP responses.",
+                    snippet="",
+                    metadata={"sub_type": "framework_background_tasks"}
+                ))
         """Discovers background processing, schedulers, and queue workers."""
-        job_patterns = [
-            (r'\b(?:@celery\.task|@app\.task|celery|Celery\()\b', "Celery Distributed Task Queue"),
-            (r'\b(?:BullMQ|Queue\s*\(|Worker\s*\()\b', "BullMQ / Node Job Worker"),
-            (r'\b(?:Sidekiq|Resque)\b', "Ruby Sidekiq Background Job"),
-            (r'\b(?:kafka|KafkaConsumer|KafkaProducer|confluent_kafka)\b', "Apache Kafka Event Stream"),
-            (r'\b(?:rabbitmq|pika\.|amqp)\b', "RabbitMQ / AMQP Message Queue"),
-            (r'\b(?:cron|cron\.schedule|APScheduler|schedule\.every)\b', "Scheduled Cron Job"),
-            (r'\b(?:go\s+func\s*\(|goroutine|channel)\b', "Go Concurrency Routine"),
-        ]
-
         for c in chunks:
             p = c.file_path.replace("\\", "/")
             p_lower = p.lower()
-            if any(ex in p_lower for ex in ["tests/", "test/", "uploads/", "fixtures/"]):
+            if any(ex in p_lower for ex in ["tests/", "test/", "uploads/", "fixtures/", "generate_docx", "generate_pdf"]):
                 continue
 
+            ext = Path(p).suffix.lower()
             txt = c.chunk_text
-            for pat, desc in job_patterns:
-                if re.search(pat, txt):
-                    add_comp(DiscoveredComponent(
-                        component_type="background_job",
-                        name=desc,
-                        file_path=p,
-                        start_line=c.start_line,
-                        end_line=c.end_line,
-                        confidence=0.90,
-                        description=f"{desc} in `{p}`",
-                        snippet=txt[:250],
-                    ))
+
+            # Celery (Python only)
+            if ext == ".py" and re.search(r'\b(?:@celery\.task|@app\.task|Celery\()\b', txt):
+                add_comp(DiscoveredComponent(
+                    component_type="background_job",
+                    name="Celery Distributed Task Queue",
+                    file_path=p,
+                    start_line=c.start_line,
+                    end_line=c.end_line,
+                    confidence=0.95,
+                    description=f"Celery task definition in `{p}`",
+                    snippet=txt[:250],
+                ))
+            # BullMQ / Node Job Worker (JS/TS only)
+            elif ext in [".js", ".ts", ".mjs", ".cjs"] and re.search(r'\b(?:BullMQ|new\s+Queue\s*\(|new\s+Worker\s*\()\b', txt):
+                add_comp(DiscoveredComponent(
+                    component_type="background_job",
+                    name="BullMQ / Node Job Worker",
+                    file_path=p,
+                    start_line=c.start_line,
+                    end_line=c.end_line,
+                    confidence=0.90,
+                    description=f"BullMQ / Node worker in `{p}`",
+                    snippet=txt[:250],
+                ))
+            # Go Goroutines (Go only)
+            elif ext == ".go" and re.search(r'\bgo\s+func\s*\(', txt):
+                add_comp(DiscoveredComponent(
+                    component_type="background_job",
+                    name="Go Concurrency Routine",
+                    file_path=p,
+                    start_line=c.start_line,
+                    end_line=c.end_line,
+                    confidence=0.90,
+                    description=f"Go concurrency routine in `{p}`",
+                    snippet=txt[:250],
+                ))
+            # Kafka / AMQP Message Queue
+            elif re.search(r'\b(?:KafkaConsumer|KafkaProducer|confluent_kafka)\b', txt):
+                add_comp(DiscoveredComponent(
+                    component_type="background_job",
+                    name="Apache Kafka Event Stream",
+                    file_path=p,
+                    start_line=c.start_line,
+                    end_line=c.end_line,
+                    confidence=0.90,
+                    description=f"Kafka event stream worker in `{p}`",
+                    snippet=txt[:250],
+                ))
+            elif re.search(r'\b(?:pika\.BlockingConnection|pika\.SelectConnection)\b', txt):
+                add_comp(DiscoveredComponent(
+                    component_type="background_job",
+                    name="RabbitMQ / AMQP Message Queue",
+                    file_path=p,
+                    start_line=c.start_line,
+                    end_line=c.end_line,
+                    confidence=0.90,
+                    description=f"RabbitMQ consumer in `{p}`",
+                    snippet=txt[:250],
+                ))
+            # Scheduled Cron Job
+            elif re.search(r'\b(?:cron\.schedule|APScheduler|schedule\.every)\b', txt):
+                add_comp(DiscoveredComponent(
+                    component_type="background_job",
+                    name="Scheduled Cron Job",
+                    file_path=p,
+                    start_line=c.start_line,
+                    end_line=c.end_line,
+                    confidence=0.90,
+                    description=f"Scheduled cron job in `{p}`",
+                    snippet=txt[:250],
+                ))
 
     @classmethod
-    def _discover_configuration(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp):
+    def _discover_configuration(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp, project_type: str = "monolith", repo_name: str = ""):
         """Discovers configuration, environment variables, and deployment manifests."""
+        if project_type in ("framework", "library"):
+            app_file = next((p for p in file_paths if "applications.py" in p or "app.py" in p), file_paths[0] if file_paths else "pyproject.toml")
+            add_comp(DiscoveredComponent(
+                component_type="config",
+                name="Framework Application Constructor Parameters",
+                file_path=app_file,
+                start_line=1,
+                end_line=50,
+                confidence=0.99,
+                description=f"{repo_name} framework configuration is passed directly via `FastAPI(...)` class constructor parameters in `{app_file}`. The framework does not bundle environment-specific deployment configurations (.env, dev/staging/prod environments).",
+                snippet="",
+                metadata={"sub_type": "framework_constructor_config"}
+            ))
         config_filenames = {
             "config.py", "settings.py", "core/config.py", "config/settings.py",
             "package.json", "requirements.txt", "pyproject.toml", "go.mod", "cargo.toml",
@@ -845,21 +1051,30 @@ class ArchitectureAnalysisEngine:
     @classmethod
     def _discover_frontend_components(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp):
         """Discovers frontend UI pages, views, and components."""
-        fe_dirs = ["components/", "pages/", "views/", "screens/", "src/ui", "lib/screens", "lib/views"]
+        fe_dirs = [
+            "components/", "pages/", "views/", "screens/", "src/ui", "lib/screens", "lib/views",
+            "lib/home", "lib/auth", "lib/components", "templates/", "static/"
+        ]
 
         for c in chunks:
             p = c.file_path.replace("\\", "/")
             p_lower = p.lower()
-            if any(ex in p_lower for ex in ["tests/", "test/", "uploads/", "fixtures/"]):
+            if any(ex in p_lower for ex in ["tests/", "test/", "uploads/", "fixtures/", "generate_docx", "generate_pdf"]):
                 continue
 
             ext = Path(p).suffix.lower()
-            is_fe_file = ext in [".tsx", ".jsx", ".vue", ".svelte"] or (ext == ".dart" and any(fd in p_lower for fd in ["screens/", "widgets/", "views/"]))
+            is_dart_ui = (
+                ext == ".dart" and (
+                    any(fd in p_lower for fd in ["screens/", "widgets/", "views/", "pages/", "home/", "auth/", "components/"]) or
+                    p_lower.endswith(("_page.dart", "_screen.dart", "_view.dart", "_card.dart")) or
+                    any(k in c.chunk_text for k in ["StatefulWidget", "StatelessWidget", "Scaffold", "Widget build"])
+                )
+            )
+            is_fe_file = ext in [".tsx", ".jsx", ".vue", ".svelte", ".html"] or is_dart_ui
 
             if is_fe_file or any(fd in p_lower for fd in fe_dirs):
                 name = c.code_symbol or Path(p).stem
-                # Filter out pure utility functions
-                if name[0].isupper() or any(k in c.chunk_text for k in ["Widget", "Component", "render", "return <", "Widget build"]):
+                if name and (name[0].isupper() or any(k in c.chunk_text for k in ["Widget", "Component", "render", "return <", "Widget build", "StatefulWidget", "StatelessWidget"])):
                     add_comp(DiscoveredComponent(
                         component_type="frontend_ui",
                         name=f"UI: {name}",
@@ -868,7 +1083,58 @@ class ArchitectureAnalysisEngine:
                         end_line=c.end_line,
                         confidence=0.90,
                         description=f"Frontend UI component `{name}` in `{p}`",
-                        snippet=c.chunk_text[:200],
+                        snippet=c.chunk_text[:250],
+                    ))
+
+    @classmethod
+    def _discover_mobile_native_components(cls, chunks: List[CodeChunk], file_paths: List[str], add_comp):
+        """Discovers Android and native mobile integration components (manifests, host activities, background services)."""
+        for c in chunks:
+            p = c.file_path.replace("\\", "/")
+            p_lower = p.lower()
+            if any(ex in p_lower for ex in ["tests/", "test/", "uploads/", "fixtures/"]):
+                continue
+
+            p_name = Path(p).name
+
+            # Android Manifest
+            if p_name.lower() == "androidmanifest.xml" and "main" in p_lower:
+                add_comp(DiscoveredComponent(
+                    component_type="native_android",
+                    name="Android Application Manifest & Permissions",
+                    file_path=p,
+                    start_line=c.start_line,
+                    end_line=c.end_line,
+                    confidence=0.98,
+                    description=f"Android core manifest in `{p}`",
+                    snippet=c.chunk_text[:250],
+                ))
+            # Android Host Activity
+            elif p_name in ["MainActivity.kt", "MainActivity.java"]:
+                add_comp(DiscoveredComponent(
+                    component_type="native_android",
+                    name="Android Native Host (Activity / MethodChannels)",
+                    file_path=p,
+                    start_line=c.start_line,
+                    end_line=c.end_line,
+                    confidence=0.98,
+                    description=f"Android native bridge host in `{p}`",
+                    snippet=c.chunk_text[:250],
+                ))
+            # Android Native Services, Workers, Receivers
+            elif "android/" in p_lower and Path(p).suffix in [".kt", ".java"]:
+                txt = c.chunk_text
+                if any(k in txt for k in ["Service()", "Worker(", "BroadcastReceiver()", "ForegroundService", "Notification", "WorkManager", "CameraManager"]):
+                    comp_name = c.code_symbol or Path(p).stem
+                    add_comp(DiscoveredComponent(
+                        component_type="native_android",
+                        name=f"Android Native: {comp_name}",
+                        file_path=p,
+                        start_line=c.start_line,
+                        end_line=c.end_line,
+                        confidence=0.95,
+                        description=f"Android native service/receiver `{comp_name}` in `{p}`",
+                        snippet=c.chunk_text[:250],
                     ))
 
     @classmethod

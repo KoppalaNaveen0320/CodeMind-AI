@@ -387,14 +387,25 @@ class KnowledgeGraphBuilder:
                 file_path=matched_file.path,
                 language=matched_file.language,
             )
+            import_category = getattr(sym, "docstring", None) or "RUNTIME"
+            if import_category == "TYPE_CHECKING":
+                edge_type = "TYPE_CHECKING_IMPORTS"
+                evidence_prefix = "[TYPE_CHECKING] Import inside typing condition"
+            elif import_category == "LOCAL":
+                edge_type = "LOCAL_IMPORTS"
+                evidence_prefix = "[LOCAL] Deferred import inside function"
+            else:
+                edge_type = "IMPORTS"
+                evidence_prefix = "[RUNTIME] Top-level runtime import"
+
             add_edge(
                 source_node,
                 target_node,
-                "IMPORTS",
+                edge_type,
                 is_verified=True,
-                evidence=f"Import statement at line {sym.start_line}: {raw[:80]}",
+                evidence=f"{evidence_prefix} at line {sym.start_line}: {raw[:80]}",
             )
-            if imported_files_by_source is not None:
+            if edge_type == "IMPORTS" and imported_files_by_source is not None:
                 imported_files_by_source.setdefault(source_file.path, set()).add(matched_file.path)
         else:
             # External dependency package

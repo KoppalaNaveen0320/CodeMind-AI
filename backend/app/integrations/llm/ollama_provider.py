@@ -131,10 +131,12 @@ class OllamaLLMProvider(LLMProvider):
             "options": {
                 "temperature": temp,
                 "num_ctx": self._context_limit,
+                "top_p": 0.9,
+                "repeat_penalty": 1.1,
+                "num_predict": max_tokens or 2048,
             },
         }
-        if max_tokens:
-            payload["options"]["num_predict"] = max_tokens
+
 
         last_error: Optional[Exception] = None
 
@@ -211,10 +213,12 @@ class OllamaLLMProvider(LLMProvider):
             "options": {
                 "temperature": temp,
                 "num_ctx": self._context_limit,
+                "top_p": 0.9,
+                "repeat_penalty": 1.1,
+                "num_predict": max_tokens or 2048,
             },
         }
-        if max_tokens:
-            payload["options"]["num_predict"] = max_tokens
+
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
